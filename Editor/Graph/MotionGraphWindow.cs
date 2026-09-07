@@ -20,6 +20,7 @@ namespace Juahn.UiMotion.Editor
         private string _graphGuid;
 
         private MotionGraphViewImpl _view;
+        private MotionNodePalette _palette;
         private Label _titleLabel;
         private Label _summaryLabel;
 
@@ -81,9 +82,21 @@ namespace Juahn.UiMotion.Editor
         {
             rootVisualElement.Add(BuildToolbar());
 
+            // 팔레트 · 그래프를 가로로 나눈다.
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.flexGrow = 1f;
+            rootVisualElement.Add(row);
+
             _view = new MotionGraphViewImpl();
             _view.style.flexGrow = 1f;
-            rootVisualElement.Add(_view);
+
+            _palette = new MotionNodePalette(_view);
+            row.Add(_palette);
+            row.Add(_view);
+
+            // 스페이스와 우클릭의 노드 검색 창. 창이 있어야 좌표를 바꿀 수 있다.
+            _view.SetupSearch(this);
 
             // OnEnable은 CreateGUI보다 먼저 불리므로 복원은 여기서 한다.
             Bind(ResolveStoredGraph());

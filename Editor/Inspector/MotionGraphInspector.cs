@@ -53,6 +53,12 @@ namespace Juahn.UiMotion.Editor
 
             serializedObject.Update();
 
+            if (GUILayout.Button("그래프 창에서 열기"))
+            {
+                MotionGraphWindow.Open(graph);
+            }
+
+            EditorGUILayout.Space();
             DrawSummary(graph);
 
             EditorGUILayout.Space();

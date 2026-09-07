@@ -37,6 +37,18 @@ namespace Juahn.UiMotion.Editor
 
         private readonly Label _issueBadge;
 
+        /// <summary>
+        /// 자식 실행 순서 목록.
+        ///
+        /// <b>이것이 없으면 <c>Sequence</c>를 쓸 수 없다.</b> 같은 부모에서 나가는 간선의
+        /// 순서가 곧 실행 순서인데 GraphView는 간선에 순서 개념이 없다. 화면에 번호가
+        /// 보이지 않으면 사람은 순서를 알 수도, 틀린 것을 알아챌 수도 없다.
+        ///
+        /// 특히 간선을 지웠다 다시 이으면 새 간선이 배열 끝에 붙어 순서가 조용히 바뀐다.
+        /// 그 변화를 눈에 보이게 만드는 것이 이 목록의 역할이다.
+        /// </summary>
+        private readonly VisualElement _childOrder;
+
         public MotionNodeView(NodeId id, MotionNodeBase model)
         {
             Id = id;
@@ -77,8 +89,50 @@ namespace Juahn.UiMotion.Editor
             _issueBadge.style.display = DisplayStyle.None;
             titleContainer.Add(_issueBadge);
 
+            _childOrder = new VisualElement();
+            _childOrder.style.display = DisplayStyle.None;
+            _childOrder.style.paddingLeft = 6f;
+            _childOrder.style.paddingRight = 6f;
+            _childOrder.style.paddingTop = 2f;
+            _childOrder.style.paddingBottom = 4f;
+            extensionContainer.Add(_childOrder);
+
             RefreshExpandedState();
             RefreshPorts();
+        }
+
+        /// <summary>
+        /// 자식의 실행 순서를 번호로 그린다. 순서는 <see cref="MotionGraph.Links"/>의
+        /// 배열 순서 그대로이며, 바꾸는 것은 노드 인스펙터의 위/아래 버튼이다.
+        /// </summary>
+        public void SetChildOrder(IReadOnlyList<string> childTitles)
+        {
+            _childOrder.Clear();
+
+            if (childTitles == null || childTitles.Count == 0)
+            {
+                _childOrder.style.display = DisplayStyle.None;
+                Output.portName = string.Empty;
+                RefreshExpandedState();
+                return;
+            }
+
+            _childOrder.style.display = DisplayStyle.Flex;
+            Output.portName = "자식 " + childTitles.Count;
+
+            for (int i = 0; i < childTitles.Count; i++)
+            {
+                var row = new Label((i + 1) + ". " + childTitles[i]);
+
+                row.style.fontSize = 10f;
+                row.style.whiteSpace = WhiteSpace.NoWrap;
+                row.tooltip = "실행 순서 " + (i + 1) + " / " + childTitles.Count +
+                    ". 순서는 노드 인스펙터에서 바꿉니다.";
+
+                _childOrder.Add(row);
+            }
+
+            RefreshExpandedState();
         }
 
         /// <summary>
