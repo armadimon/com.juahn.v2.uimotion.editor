@@ -14,6 +14,7 @@ namespace Juahn.UiMotion.Editor
         public const string GraphWindowTitle = "UI Motion";
         public const string DoctorWindowTitle = "Node Doctor";
         public const string BrowserWindowTitle = "Motion Presets";
+        public const string DiagnosticsWindowTitle = "Motion Diagnostics";
 
         /// <summary>
         /// 이 패키지가 들고 다니는 예시 그래프의 위치.
