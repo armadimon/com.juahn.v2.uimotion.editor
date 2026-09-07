@@ -426,6 +426,11 @@ namespace Juahn.UiMotion.Editor
         {
             if (_pending != PendingAction.None)
             {
+                // 그래프를 바꾸면 프로퍼티 변경과 슬롯 목록 맞추기가 별개의 undo 항목이 된다.
+                // 사람은 그것을 한 동작으로 여기므로 Ctrl+Z 한 번에 둘 다 돌아가야 한다.
+                // ApplyModifiedProperties가 이미 그룹을 열어 두었으니 그 안으로 합친다.
+                int undoGroup = Undo.GetCurrentGroup();
+
                 switch (_pending)
                 {
                     case PendingAction.SyncBindings:
@@ -449,6 +454,8 @@ namespace Juahn.UiMotion.Editor
                 _pending = PendingAction.None;
 
                 MarkChanged(player);
+
+                Undo.CollapseUndoOperations(undoGroup);
 
                 // 직접 바꾼 필드를 다시 읽는다. 안 하면 SerializedObject가 옛 값을 되돌려 놓는다.
                 serializedObject.Update();
