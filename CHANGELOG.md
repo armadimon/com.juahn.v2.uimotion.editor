@@ -82,3 +82,22 @@ Node Doctor.
   `Window > UI Motion > Generate Missing Samples`
 - 예시 폴더는 이 스크립트 자신의 에셋 경로에서 역산한다. 패키지가 `Packages/`에
   임베드돼 있든 캐시에서 왔든 같은 자리에 만든다
+
+그래프 창 — 뼈대와 왕복.
+
+- `MotionGraphWindow` — `Window > UI Motion > Graph`, 그리고 그래프 에셋 더블클릭
+  (`[OnOpenAsset]`)으로 열린다. 툴바에 에셋 이름 · 저장 · 다시 검사 · 검사 요약
+- **도메인 리로드를 GUID로 넘긴다.** `MotionGraph` 참조를 창 필드로 들면 리로드 때 사라지므로
+  에셋의 GUID를 `[SerializeField] string`으로 저장하고 `CreateGUI`에서 복원한다
+- **되돌리기가 뷰에 반영된다.** `Undo.undoRedoPerformed`를 구독해 그래프를 통째로 다시 읽는다.
+  구독하지 않으면 화면과 에셋이 어긋난다
+- `MotionGraphViewImpl` — `UnityEditor.Experimental.GraphView` 위의 뷰. **뷰는 상태를 갖지
+  않는다.** 진실은 언제나 에셋에 있고 편집은 저작 API를 거쳐 에셋을 바꾼 뒤 다시 읽는다.
+  이동 · 삭제 · 배선이 전부 `Undo`를 거친다
+- `Load` 중에는 `graphViewChanged`를 무시한다(`_loading` 가드). 요소를 지우고 다시 만드는
+  동안에도 콜백이 불리므로, 가드가 없으면 방금 읽은 것을 도로 지운다
+- `MotionNodeView` — 포트 타입은 흐름 하나뿐이다. **끝나지 않는 노드(`BlocksChildren`)는
+  출력 포트를 만들지 않는다** — 자식을 달아도 실행되지 않으므로 경고보다 배선 자체를
+  막는 편이 낫다. 미검증 노드와 검사 결과를 제목 옆 배지로 표시한다
+- `[OnOpenAsset]`의 instanceID 해석은 Unity 버전으로 갈라 둔다. 6000.3이 `instanceID`
+  오버로드를 오류로 폐기하고 `EntityId`로 옮겼는데 `EntityId`는 6000.0에 없다
