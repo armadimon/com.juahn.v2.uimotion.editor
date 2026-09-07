@@ -1,0 +1,13 @@
+{
+  "name": "com.juahn.v2.uimotion.editor",
+  "displayName": "UI Motion Tools",
+  "author": "armadimon",
+  "version": "0.1.0",
+  "unity": "6000.0",
+  "license": "MIT",
+  "type": "library",
+  "description": "Authoring tools for UI Motion: a node graph window, a node palette, slot auto-binding on MotionPlayer, an in-editor preview driver, a preset browser, and Node Doctor which checks that every published node carries a description and a working sample.",
+  "dependencies": {
+    "com.juahn.v2.uimotion": "0.1.0"
+  }
+}

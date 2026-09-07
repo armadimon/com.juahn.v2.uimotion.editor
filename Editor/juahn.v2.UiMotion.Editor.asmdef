@@ -1,0 +1,19 @@
+{
+    "name": "juahn.v2.UiMotion.Editor",
+    "rootNamespace": "Juahn.UiMotion.Editor",
+    "references": [
+        "juahn.v2.UiMotion",
+        "juahn.v2.UiMotion.Core"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

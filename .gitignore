@@ -1,0 +1,32 @@
+# Unity UPM package .gitignore
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+.DS_Store
+.vs/
+.idea/
+.vscode/
+node_modules/
+*.tmp
+
+# dotnet
+[Bb]in/
+**/TestResults/
+
+# 컴파일 게이트 프로젝트는 커밋한다.
+!Tools~/compile-check/*.csproj

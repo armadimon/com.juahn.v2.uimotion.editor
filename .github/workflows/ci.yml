@@ -1,0 +1,77 @@
+name: package-validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate package.json is valid JSON
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
+          echo "package.json is valid JSON"
+
+      - name: Check required package fields
+        run: |
+          node -e "
+          const p = JSON.parse(require('fs').readFileSync('package.json','utf8'));
+          for (const k of ['name','version','unity','license']) {
+            if (!p[k]) { console.error('missing field: ' + k); process.exit(1); }
+          }
+          if (!p.name.startsWith('com.juahn.v2.')) { console.error('name must start with com.juahn.v2.'); process.exit(1); }
+          if (!p.dependencies || !p.dependencies['com.juahn.v2.uimotion']) {
+            console.error('must depend on com.juahn.v2.uimotion'); process.exit(1);
+          }
+          console.log('package fields OK: ' + p.name + '@' + p.version);
+          "
+
+      - name: Check assembly definition present and editor only
+        run: |
+          if ! find Editor -name '*.asmdef' | grep -q . ; then
+            echo "no Editor asmdef found"; exit 1
+          fi
+          node -e "
+          const fs = require('fs');
+          const path = require('child_process').execSync(\"find Editor -name '*.asmdef'\").toString().trim().split('\n')[0];
+          const a = JSON.parse(fs.readFileSync(path,'utf8'));
+          if (!a.includePlatforms || a.includePlatforms.indexOf('Editor') < 0) {
+            console.error('asmdef must be Editor-only'); process.exit(1);
+          }
+          console.log('asmdef OK: ' + a.name);
+          "
+
+      - name: Guard against runtime code in this package
+        run: |
+          # 이 패키지는 에디터 전용이다. Runtime 폴더가 생기면 규약이 깨진 것이다.
+          if [ -d Runtime ]; then echo "이 패키지에는 Runtime 폴더가 있으면 안 됩니다"; exit 1; fi
+          echo "editor-only OK"
+
+      - name: Check every imported file has a .meta
+        run: |
+          missing=0
+          for f in $(git ls-files | grep -v '\.meta$' | grep -v '^\.github/' | grep -v '~/'); do
+            if [ ! -e "$f.meta" ]; then echo "meta 없음: $f"; missing=1; fi
+          done
+          if [ "$missing" = "1" ]; then exit 1; fi
+          echo "meta 파일 전부 있음"
+
+      - name: Check for duplicate meta GUIDs
+        run: |
+          dups=$(git ls-files '*.meta' | xargs grep -h '^guid:' | sort | uniq -d)
+          if [ -n "$dups" ]; then echo "GUID 중복: $dups"; exit 1; fi
+          echo "GUID 중복 없음"
+
+      - name: Note editor layer verification
+        run: |
+          # Editor는 UnityEditor 어셈블리가 필요한데 그것은 재배포할 수 없다.
+          # 컴파일 검증은 로컬 게이트다: ./Tools~/compile-check/run.sh
+          if [ ! -x Tools~/compile-check/run.sh ]; then
+            echo "Tools~/compile-check/run.sh가 없거나 실행 권한이 없습니다"; exit 1
+          fi
+          echo "에디터 컴파일 게이트가 제자리에 있습니다 (로컬 실행)"
