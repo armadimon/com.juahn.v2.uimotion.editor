@@ -312,6 +312,12 @@ namespace Juahn.UiMotion.Editor
             }
 
             EditorGUILayout.PropertyField(property, label, true);
+
+            // 곡선은 빈 편집기 앞에서 손으로 그리기 어렵다. 검증된 모양을 출발점으로 준다.
+            if (property.propertyType == SerializedPropertyType.AnimationCurve)
+            {
+                MotionCurvePresets.DrawPicker(property);
+            }
         }
 
         private static GUIContent MakeLabel(SerializedProperty property, MotionParamAttribute param)

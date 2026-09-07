@@ -11,12 +11,9 @@ namespace Juahn.UiMotion.Editor
     /// 무엇을 하는가"를 보여 준다. 프리셋은 <b>완성된 연출</b>이다. 붙이면 그대로 쓸 수 있고,
     /// 수치는 실제로 출시된 게임에서 검증된 값이다.
     ///
-    /// 수치의 출처는 IdlePaori다. 버튼은 <c>UIButtonBounceModule</c>, 결과 등장은
-    /// <c>SlotRevealGrid</c>와 <c>ResultRevealConfigAsset</c>에서 옮겨 왔다.
-    ///
-    /// <b>코드가 만드는 이유</b> — 손으로 만든 <c>.asset</c>은 어떤 값이 왜 그 값인지
-    /// 알 수 없다. 여기서는 수치가 상수로 이름과 함께 서 있고, 노드가 바뀌어도 다시
-    /// 생성하면 따라온다. <see cref="MotionSampleGenerator"/>가 같은 이유로 그렇게 한다.
+    /// 전부 <see cref="ScaleNode"/> 하나에 <see cref="MotionScaleCurves"/>의 곡선을 꽂은
+    /// 것이다. 노드를 새로 만들지 않는 이유는 곡선이 이미 그 모양들을 다 표현하기
+    /// 때문이다 — 자세한 것은 <see cref="ScaleNode"/> 주석.
     ///
     /// <b>덮어쓰지 않는다.</b> 사람이 손봤을 수 있으므로 이미 있는 것은 건너뛴다.
     /// </summary>
@@ -28,46 +25,6 @@ namespace Juahn.UiMotion.Editor
         private const string ReadOnlyHint =
             "패키지가 읽기 전용 위치(Library/PackageCache)에 있으면 프리셋을 만들 수 없습니다. " +
             "패키지 폴더를 Packages/ 아래로 복사해 임베드한 뒤 다시 시도하세요.";
-
-        // --- IdlePaori 검증 수치 ------------------------------------------
-        //
-        // 프리팹에 실제로 직렬화된 값이다. 코드 기본값과 다른 것이 있으므로 코드만 보고
-        // 옮기면 안 된다 - SlotRevealGrid의 _revealInterval은 코드 기본이 0.1인데
-        // 출시된 SlotResultGridPopup.prefab은 0.05다.
-
-        /// <summary>버튼 — 눌린 배율. 프리팹 50곳 전부 같은 값이다.</summary>
-        private const float ButtonPressedScale = 0.95f;
-
-        private const float ButtonPressDuration = 0.085f;
-
-        /// <summary>버튼 — 튀는 배율. 50곳 중 45곳이 1.15, 5곳이 1.25다.</summary>
-        private const float ButtonOvershootScale = 1.15f;
-
-        private const float ButtonOvershootDuration = 0.1f;
-
-        private const float ButtonSettleDuration = 0.085f;
-
-        /// <summary>일반 칸 — 넘치는 세기. <c>EaseKind.OutBack</c>의 상수와 사실상 같다.</summary>
-        private const float SlotPopOvershoot = 1.7f;
-
-        private const float SlotPopDuration = 0.18f;
-
-        /// <summary>강조 칸 — 예비 동작을 거친 칸이라 기본 칸보다 길게 잡아 무게를 준다.</summary>
-        private const float AccentDuration = 0.28f;
-
-        private const float AccentDropRatio = 0.72f;
-
-        private const float AccentImpact = 0.12f;
-
-        /// <summary>1등(가장 드문 등급)이 떨어지는 높이와 그 뒤 머무는 시간.</summary>
-        private const float Tier3StartScale = 2.2f;
-
-        private const float Tier3Dwell = 0.7f;
-
-        /// <summary>2등.</summary>
-        private const float Tier2StartScale = 1.5f;
-
-        private const float Tier2Dwell = 0.4f;
 
         /// <summary>버튼 연출을 나누는 두 트리거. uGUI의 PointerDown / PointerUp에 잇는다.</summary>
         private const string PressTrigger = "Press";
@@ -107,9 +64,11 @@ namespace Juahn.UiMotion.Editor
             int failed = 0;
 
             made += Create(folder, "ButtonBounce", BuildButtonBounce, overwrite, ref failed);
+            made += Create(folder, "ButtonPressRelease", BuildButtonPressRelease, overwrite, ref failed);
             made += Create(folder, "SlotPopReveal", BuildSlotPop, overwrite, ref failed);
             made += Create(folder, "SlotAccentSlam_Tier2", BuildTier2Slam, overwrite, ref failed);
             made += Create(folder, "SlotAccentSlam_Tier3", BuildTier3Slam, overwrite, ref failed);
+            made += Create(folder, "AttentionPulse", BuildPulse, overwrite, ref failed);
 
             AssetDatabase.SaveAssets();
 
@@ -124,37 +83,50 @@ namespace Juahn.UiMotion.Editor
         // --- 프리셋 -------------------------------------------------------
 
         /// <summary>
-        /// 버튼의 뽀잉. 트리거 둘로 나뉜다 — 누름과 뗌은 서로 다른 순간에 일어난다.
+        /// 버튼의 뽀잉을 한 곡선으로. 클릭 한 번에 눌림·튐·안착이 다 들어 있다.
         ///
-        /// 슬롯을 <c>Self</c>가 아니라 <c>Visual</c>로 둔다. 버튼 루트는 대개 레이캐스트
-        /// 대상이고, 그것을 스케일하면 축소되는 순간 눌림 판정 영역도 함께 줄어들어
-        /// 테두리를 눌렀다 떼면 클릭이 무효화된다. 시각 전용 자식을 꽂아야 한다.
+        /// 대부분의 버튼은 이것이면 된다. 손가락이 닿아 있는 <b>동안</b> 눌린 채여야 하는
+        /// 자리(길게 누르는 버튼)만 <c>ButtonPressRelease</c>를 쓴다.
         /// </summary>
         private static MotionGraph BuildButtonBounce()
         {
             var graph = ScriptableObject.CreateInstance<MotionGraph>();
-            var visual = new SlotRef("Visual");
 
-            var press = new ButtonBounceNode
+            var scale = new ScaleNode
             {
-                Target = visual,
-                Phase = ButtonBouncePhase.Press,
-                PressedScale = ButtonPressedScale,
-                PressDuration = ButtonPressDuration,
-                OvershootScale = ButtonOvershootScale,
-                OvershootDuration = ButtonOvershootDuration,
-                SettleDuration = ButtonSettleDuration,
+                Target = new SlotRef("Visual"),
+                Curve = MotionScaleCurves.ButtonBounce(),
+                Duration = 0.27f,
             };
 
-            var release = new ButtonBounceNode
+            Chain(graph, MotionRuntime.StartTrigger, scale, 60f);
+            return graph;
+        }
+
+        /// <summary>
+        /// 누름과 뗌을 나눈 버튼. 누르는 동안 눌린 채로 있어야 하는 자리가 쓴다.
+        ///
+        /// 누름 곡선은 0.95에서 끝나고 그 배율에 머문다. 뗌 곡선은 0.95에서 시작해 넘쳐
+        /// 튀었다 1로 온다. 곡선이 <b>제자리 크기 대비 배율</b>이라 두 곡선이 이어져도
+        /// 값이 어긋나지 않는다 — "지금 크기의 몇 배"로 재면 연타할수록 흘러내린다.
+        /// </summary>
+        private static MotionGraph BuildButtonPressRelease()
+        {
+            var graph = ScriptableObject.CreateInstance<MotionGraph>();
+            var visual = new SlotRef("Visual");
+
+            var press = new ScaleNode
             {
                 Target = visual,
-                Phase = ButtonBouncePhase.Release,
-                PressedScale = ButtonPressedScale,
-                PressDuration = ButtonPressDuration,
-                OvershootScale = ButtonOvershootScale,
-                OvershootDuration = ButtonOvershootDuration,
-                SettleDuration = ButtonSettleDuration,
+                Curve = MotionScaleCurves.ButtonPress(),
+                Duration = 0.085f,
+            };
+
+            var release = new ScaleNode
+            {
+                Target = visual,
+                Curve = MotionScaleCurves.ButtonRelease(),
+                Duration = 0.185f,
             };
 
             Chain(graph, PressTrigger, press, 60f);
@@ -174,12 +146,11 @@ namespace Juahn.UiMotion.Editor
         {
             var graph = ScriptableObject.CreateInstance<MotionGraph>();
 
-            var pop = new PopScaleNode
+            var pop = new ScaleNode
             {
                 Target = SlotRef.Self,
-                FromScale = 0f,
-                Overshoot = SlotPopOvershoot,
-                Duration = SlotPopDuration,
+                Curve = MotionScaleCurves.PopIn(),
+                Duration = 0.18f,
             };
 
             Chain(graph, MotionRuntime.StartTrigger, pop, 60f);
@@ -188,12 +159,40 @@ namespace Juahn.UiMotion.Editor
 
         private static MotionGraph BuildTier2Slam()
         {
-            return BuildAccentSlam(Tier2StartScale, Tier2Dwell);
+            return BuildAccentSlam(MotionScaleCurves.SlamTier2(), 0.4f);
         }
 
         private static MotionGraph BuildTier3Slam()
         {
-            return BuildAccentSlam(Tier3StartScale, Tier3Dwell);
+            return BuildAccentSlam(MotionScaleCurves.SlamTier3(), 0.7f);
+        }
+
+        /// <summary>강조가 필요한 자리에 계속 도는 펄스. Loop 트리거에 문다.</summary>
+        private static MotionGraph BuildPulse()
+        {
+            var graph = ScriptableObject.CreateInstance<MotionGraph>();
+
+            var pulse = new ScaleNode
+            {
+                Target = SlotRef.Self,
+                Curve = MotionScaleCurves.Pulse(),
+                Duration = 1f,
+            };
+
+            NodeId pulseId = graph.AddNode(pulse);
+            graph.SetNodePosition(pulseId, new Vector2(580f, 60f));
+
+            // 곡선이 1에서 시작해 1로 끝나므로 되풀이해도 이어지는 지점이 튀지 않는다.
+            var repeat = new RepeatNode { Count = RepeatNode.Infinite };
+            NodeId repeatId = graph.AddNode(repeat);
+            graph.SetNodePosition(repeatId, new Vector2(320f, 60f));
+            graph.Link(repeatId, pulseId);
+
+            NodeId trigger = graph.AddTrigger(MotionRuntime.LoopTrigger);
+            graph.Link(trigger, repeatId);
+            graph.SetNodePosition(trigger, new Vector2(60f, 60f));
+
+            return graph;
         }
 
         /// <summary>
@@ -204,7 +203,7 @@ namespace Juahn.UiMotion.Editor
         /// 칸으로 넘어가면 되고, 머무는 시간을 따로 들고 있지 않아도 된다. 밖에서 초를
         /// 다시 저작하면 이 그래프를 고쳐도 타이밍이 옛 값으로 남아 조용히 어긋난다.
         /// </summary>
-        private static MotionGraph BuildAccentSlam(float startScale, float dwellSeconds)
+        private static MotionGraph BuildAccentSlam(AnimationCurve curve, float dwellSeconds)
         {
             var graph = ScriptableObject.CreateInstance<MotionGraph>();
 
@@ -212,13 +211,11 @@ namespace Juahn.UiMotion.Editor
             NodeId sequenceId = graph.AddNode(sequence);
             graph.SetNodePosition(sequenceId, new Vector2(320f, 60f));
 
-            var slam = new SlamScaleNode
+            var slam = new ScaleNode
             {
                 Target = SlotRef.Self,
-                FromScale = startScale,
-                Duration = AccentDuration,
-                DropRatio = AccentDropRatio,
-                Impact = AccentImpact,
+                Curve = curve,
+                Duration = 0.28f,
             };
             NodeId slamId = graph.AddNode(slam);
             graph.SetNodePosition(slamId, new Vector2(580f, 20f));
