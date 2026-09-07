@@ -30,6 +30,21 @@ namespace Juahn.UiMotion.Editor
         private int _selected = -1;
         private int _passed;
 
+        /// <summary>
+        /// 눌린 행. 그리는 도중에는 반영하지 않는다.
+        ///
+        /// <b>선택을 GUI 패스 한가운데에서 바꾸면 창이 예외를 던진다.</b> 아래의
+        /// <see cref="DrawDetail"/>이 선택 여부에 따라 다른 개수의 컨트롤을 그리는데,
+        /// 클릭은 Layout이 아닌 패스에서 오므로 그 자리에서 <c>_selected</c>를 바꾸면
+        /// Layout 패스와 컨트롤 개수가 어긋나
+        /// <c>ArgumentException: Getting control N's position in a group with only M controls</c>가 난다.
+        /// -1은 "눌린 것 없음"이다 — 클릭으로 선택이 풀리는 경로는 없다.
+        /// </summary>
+        private int _pendingSelection = -1;
+
+        /// <summary>"다시 검사"가 눌렸다. 줄 수가 바뀌므로 다음 패스의 맨 앞에서 처리한다.</summary>
+        private bool _pendingRebuild;
+
         [MenuItem(MotionEditorPaths.MenuRoot + MotionEditorPaths.DoctorWindowTitle)]
         public static void Open()
         {
@@ -46,6 +61,15 @@ namespace Juahn.UiMotion.Editor
 
         private void OnGUI()
         {
+            // 다시 검사는 줄 수를 바꾼다. Layout 패스가 시작되기 전에 끝내야
+            // 이 패스의 컨트롤 개수가 흔들리지 않는다.
+            if (_pendingRebuild)
+            {
+                _pendingRebuild = false;
+                MotionNodeCatalog.Refresh();
+                Rebuild();
+            }
+
             DrawToolbar();
 
             if (_rows.Count == 0)
@@ -73,6 +97,8 @@ namespace Juahn.UiMotion.Editor
             EditorGUILayout.EndScrollView();
 
             DrawDetail();
+
+            ApplyPendingSelection();
         }
 
         // --- 그리기 --------------------------------------------------------
@@ -89,8 +115,7 @@ namespace Juahn.UiMotion.Editor
 
                 if (GUILayout.Button("다시 검사", EditorStyles.toolbarButton, GUILayout.Width(80f)))
                 {
-                    MotionNodeCatalog.Refresh();
-                    Rebuild();
+                    _pendingRebuild = true;
                     Repaint();
                 }
             }
@@ -127,7 +152,8 @@ namespace Juahn.UiMotion.Editor
 
             if (Event.current.type == EventType.MouseDown && rect.Contains(Event.current.mousePosition))
             {
-                Select(index, row);
+                // 실제 반영은 OnGUI 끝에서 한다. 여기서 바꾸면 컨트롤 개수가 어긋난다.
+                _pendingSelection = index;
                 Event.current.Use();
             }
 
@@ -192,12 +218,30 @@ namespace Juahn.UiMotion.Editor
 
         // --- 상태 ----------------------------------------------------------
 
-        /// <summary>행을 고르고, 예시 에셋이 있으면 프로젝트 창에서 그것을 선택한다.</summary>
-        private void Select(int index, MotionNodeDoctor.Row row)
+        /// <summary>
+        /// 눌러 둔 행을 실제로 고른다. GUI 패스가 끝난 뒤에만 부른다.
+        /// 예시 에셋이 있으면 프로젝트 창에서 그것도 선택한다.
+        /// </summary>
+        private void ApplyPendingSelection()
         {
+            if (_pendingSelection < 0)
+            {
+                return;
+            }
+
+            int index = _pendingSelection;
+            _pendingSelection = -1;
+
+            if (index >= _rows.Count)
+            {
+                return;
+            }
+
             _selected = index;
             GUI.FocusControl(null);
+            Repaint();
 
+            MotionNodeDoctor.Row row = _rows[index];
             if (!row.SampleExists)
             {
                 return;
@@ -243,6 +287,7 @@ namespace Juahn.UiMotion.Editor
 
             // 목록이 다시 만들어지면 인덱스가 다른 노드를 가리킨다.
             _selected = -1;
+            _pendingSelection = -1;
         }
     }
 }

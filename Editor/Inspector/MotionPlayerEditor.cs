@@ -81,10 +81,14 @@ namespace Juahn.UiMotion.Editor
         /// 플레이 중에는 트리거 버튼의 재생 상태가 매 프레임 바뀐다. 다시 그리지 않으면
         /// "재생 중"이 끝난 뒤에도 그대로 남아 사람이 잘못 읽는다.
         /// 에디터 프리뷰 중에도 같은 이유로 계속 다시 그린다.
+        ///
+        /// <b>목록에 있는지가 아니라 실제로 도는지를 본다.</b> 프리뷰는 끝난 뒤에도
+        /// 되돌릴 권리를 위해 목록에 남으므로, 목록만 보면 연출이 끝난 뒤에도 인스펙터가
+        /// 영원히 매 프레임 다시 그려진다.
         /// </summary>
         public override bool RequiresConstantRepaint()
         {
-            return Application.isPlaying || MotionPreviewDriver.IsPreviewingPlayer(target as MotionPlayer);
+            return Application.isPlaying || MotionPreviewDriver.IsPlayingPreview(target as MotionPlayer);
         }
 
         public override void OnInspectorGUI()
@@ -530,8 +534,20 @@ namespace Juahn.UiMotion.Editor
 
             if (_pendingStop != null)
             {
-                // 스코프 취소가 등록된 원상 복구를 돌린다. 프리뷰에서도 같은 경로다.
-                player.Stop(_pendingStop);
+                // 스코프 취소가 등록된 원상 복구를 돌린다.
+                //
+                // 에디터에서는 드라이버를 거친다. player.Stop만 부르면 트리거는 멈추지만
+                // 플레이어가 프리뷰 목록에 남아, 도는 것이 하나도 없는데도 드라이버가
+                // 계속 시간을 넣고 "프리뷰 멈추기" 버튼도 사라지지 않는다.
+                if (Application.isPlaying)
+                {
+                    player.Stop(_pendingStop);
+                }
+                else
+                {
+                    MotionPreviewDriver.Stop(player);
+                }
+
                 _pendingStop = null;
             }
         }

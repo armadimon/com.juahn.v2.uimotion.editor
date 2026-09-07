@@ -39,6 +39,21 @@ namespace Juahn.UiMotion.Editor
         private double _lastClickTime;
         private int _lastClickIndex = -1;
 
+        /// <summary>
+        /// 눌린 행. 그리는 도중에는 반영하지 않는다.
+        ///
+        /// <b>선택을 GUI 패스 한가운데에서 바꾸면 창이 예외를 던진다.</b>
+        /// <c>Selection.activeObject</c>에 그래프 에셋을 넣으면 <c>Selection.gameObjects</c>가
+        /// 비고, 그러면 <see cref="DrawFooter"/>가 안내 <c>HelpBox</c>를 하나 더 그린다.
+        /// 클릭은 Layout이 아닌 패스에서 오므로 Layout 패스와 컨트롤 개수가 어긋나
+        /// <c>ArgumentException: Getting control N's position in a group with only M controls</c>가 난다.
+        /// -1은 "눌린 것 없음"이다.
+        /// </summary>
+        private int _pendingSelection = -1;
+
+        /// <summary>더블클릭으로 열 그래프. 창을 그리는 도중에 다른 창을 열지 않기 위해 미룬다.</summary>
+        private MotionGraph _pendingOpen;
+
         [MenuItem(MotionEditorPaths.MenuRoot + "Presets")]
         public static MotionPresetBrowser Open()
         {
@@ -64,6 +79,8 @@ namespace Juahn.UiMotion.Editor
             DrawToolbar();
             DrawList();
             DrawFooter();
+
+            ApplyPendingClick();
         }
 
         // --- 훑기 ----------------------------------------------------------
@@ -72,6 +89,7 @@ namespace Juahn.UiMotion.Editor
         {
             _rows.Clear();
             _selected = -1;
+            _pendingSelection = -1;
             _scanned = true;
 
             string[] guids = AssetDatabase.FindAssets("t:MotionGraph");
@@ -173,7 +191,10 @@ namespace Juahn.UiMotion.Editor
 
                 if (GUILayout.Button("새로 고침", EditorStyles.toolbarButton, GUILayout.Width(70f)))
                 {
-                    Rescan();
+                    // 여기서 바로 훑으면 이 패스의 나머지가 다른 개수의 줄을 그린다.
+                    // 표시를 내리고 다음 패스의 맨 앞(Layout 이전)에서 훑는다.
+                    _scanned = false;
+                    Repaint();
                 }
 
                 GUILayout.FlexibleSpace();
@@ -235,29 +256,48 @@ namespace Juahn.UiMotion.Editor
 
             if (Event.current.type == EventType.MouseDown && area.Contains(Event.current.mousePosition))
             {
-                OnRowClicked(index, row);
+                // 실제 반영은 OnGUI 끝에서 한다. 여기서 바꾸면 컨트롤 개수가 어긋난다.
+                _pendingSelection = index;
                 Event.current.Use();
             }
         }
 
-        private void OnRowClicked(int index, Row row)
+        /// <summary>눌러 둔 행을 실제로 고른다. GUI 패스가 끝난 뒤에만 부른다.</summary>
+        private void ApplyPendingClick()
         {
-            _selected = index;
-            Selection.activeObject = row.Graph;
-            EditorGUIUtility.PingObject(row.Graph);
-
-            double now = EditorApplication.timeSinceStartup;
-            bool isDoubleClick = _lastClickIndex == index && now - _lastClickTime < 0.4d;
-
-            _lastClickIndex = index;
-            _lastClickTime = now;
-
-            if (isDoubleClick)
+            if (_pendingSelection >= 0)
             {
-                MotionGraphWindow.Open(row.Graph);
+                int index = _pendingSelection;
+                _pendingSelection = -1;
+
+                if (index < _rows.Count)
+                {
+                    Row row = _rows[index];
+                    _selected = index;
+                    Selection.activeObject = row.Graph;
+                    EditorGUIUtility.PingObject(row.Graph);
+
+                    double now = EditorApplication.timeSinceStartup;
+                    bool isDoubleClick = _lastClickIndex == index && now - _lastClickTime < 0.4d;
+
+                    _lastClickIndex = index;
+                    _lastClickTime = now;
+
+                    if (isDoubleClick)
+                    {
+                        _pendingOpen = row.Graph;
+                    }
+
+                    Repaint();
+                }
             }
 
-            Repaint();
+            if (_pendingOpen != null)
+            {
+                MotionGraph graph = _pendingOpen;
+                _pendingOpen = null;
+                MotionGraphWindow.Open(graph);
+            }
         }
 
         private void DrawFooter()

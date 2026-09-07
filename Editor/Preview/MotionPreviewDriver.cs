@@ -35,6 +35,11 @@ namespace Juahn.UiMotion.Editor
             // 복구 규약은 Stop이 불렸을 때만 도므로 저장 경로를 따로 걸어 줘야 한다.
             EditorSceneManager.sceneSaving += OnSceneSaving;
             PrefabStage.prefabSaving += OnPrefabSaving;
+
+            // Apply All Overrides는 저장을 거치지 않는다. 프리뷰 중에 적용하면 연출의
+            // 중간 값이 그대로 프리팹에 구워진다 — 저장 경로만 막아서는 새어 나간다.
+            PrefabUtility.prefabInstanceApplying += OnPrefabInstanceApplying;
+
             EditorApplication.quitting += StopAll;
         }
 
@@ -61,11 +66,33 @@ namespace Juahn.UiMotion.Editor
             StopAll();
         }
 
+        private static void OnPrefabInstanceApplying(GameObject instance)
+        {
+            StopAll();
+        }
+
         public static bool IsPreviewing => Players.Count > 0;
 
+        /// <summary>
+        /// 이 플레이어가 프리뷰 목록에 있는가. 다 끝난 뒤에도 <c>true</c>다 —
+        /// 되돌릴 권리를 유지하기 위해 목록에 남겨 두기 때문이다.
+        /// 그래서 "프리뷰 멈추기" 버튼을 보일지 정할 때만 쓴다.
+        /// </summary>
         public static bool IsPreviewingPlayer(MotionPlayer player)
         {
             return player != null && Players.Contains(player);
+        }
+
+        /// <summary>
+        /// 이 플레이어가 <b>지금 실제로 재생 중</b>인가.
+        ///
+        /// <see cref="IsPreviewingPlayer"/>와 나누는 이유는 인스펙터의
+        /// <c>RequiresConstantRepaint</c> 때문이다. 목록에 있기만 해도 <c>true</c>인 값을 쓰면
+        /// 연출이 끝난 뒤에도 인스펙터가 매 프레임 다시 그려져 에디터가 계속 바쁘다.
+        /// </summary>
+        public static bool IsPlayingPreview(MotionPlayer player)
+        {
+            return player != null && Players.Contains(player) && IsPlayingAnyTrigger(player);
         }
 
         /// <summary>
@@ -177,19 +204,34 @@ namespace Juahn.UiMotion.Editor
         {
             for (int i = 0; i < Players.Count; i++)
             {
-                MotionPlayer player = Players[i];
-                if (player == null || player.Graph == null)
+                if (IsPlayingAnyTrigger(Players[i]))
                 {
-                    continue;
+                    return true;
                 }
+            }
 
-                IReadOnlyList<TriggerDeclaration> triggers = player.Graph.Triggers;
-                for (int t = 0; t < triggers.Count; t++)
+            return false;
+        }
+
+        /// <summary>
+        /// 이 플레이어의 그래프가 선언한 트리거 중 재생 중인 것이 하나라도 있는가.
+        ///
+        /// 그래프의 트리거 선언을 도는 것이 유일한 방법이다 — <c>MotionPlayer</c>는
+        /// 이름을 받는 <c>IsPlaying</c>만 내보내고 "무엇이 도는 중인지"는 알려 주지 않는다.
+        /// </summary>
+        private static bool IsPlayingAnyTrigger(MotionPlayer player)
+        {
+            if (player == null || player.Graph == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<TriggerDeclaration> triggers = player.Graph.Triggers;
+            for (int t = 0; t < triggers.Count; t++)
+            {
+                if (triggers[t] != null && player.IsPlaying(triggers[t].Name))
                 {
-                    if (triggers[t] != null && player.IsPlaying(triggers[t].Name))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
 

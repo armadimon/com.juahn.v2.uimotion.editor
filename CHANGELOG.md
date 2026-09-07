@@ -196,3 +196,21 @@ Node Doctor.
 - **검사 결과가 조용히 낡던 것.** 캐시가 그래프 **참조**로만 걸려 있어 그래프 창에서 노드를
   고쳐도 인스펙터의 "오류 N · 경고 M"이 옛 값 그대로였다. 캐시 키에
   `EditorUtility.GetDirtyCount(graph)`를 더하고 `Undo.undoRedoPerformed`에서도 무효화한다
+
+에디터가 예외를 던지거나 계속 바쁘던 것.
+
+- **IMGUI 컨트롤 개수 불일치.** Node Doctor와 프리셋 브라우저에서 같은 이벤트 안에 선택을
+  바꾸면 Layout 패스와 Repaint 패스의 컨트롤 개수가 달라져
+  `ArgumentException: Getting control N's position in a group with only M controls`가 났다.
+  Doctor는 `_selected`가 바뀌면 상세 구역이 더 그려지고, 브라우저는 `Selection.activeObject`
+  대입이 계층 선택을 비워 안내 `HelpBox`를 하나 더 켰다. 이제 클릭은 `_pendingSelection`에만
+  적어 두고 `OnGUI` 끝에서 반영한다 — `MotionPlayerEditor`가 이미 쓰던 방식이다.
+  같은 이유로 두 창의 "다시 검사"·"새로 고침"도 줄 수가 바뀌기 전에 다음 패스의 맨 앞으로 미룬다
+- **프리뷰가 끝나도 인스펙터가 매 프레임 다시 그리던 것.** `IsPreviewingPlayer`는 목록에 있기만
+  하면 `true`라 연출이 끝난 뒤에도 `RequiresConstantRepaint`가 계속 `true`였다.
+  `MotionPreviewDriver.IsPlayingPreview(player)`를 더해 **실제로 도는 트리거가 있는지**를 보게
+  했다. 인스펙터의 트리거 "정지"도 드라이버를 거치게 해 프리뷰 목록에서 빠지게 한다 —
+  플레이 모드에서만 `player.Stop`을 직접 부른다
+- **프리팹 오버라이드 적용이 프리뷰 중간값을 굽던 것.** `sceneSaving`과 `prefabSaving`만
+  걸려 있어 `Apply All Overrides` 경로가 무방비였다. `PrefabUtility.prefabInstanceApplying`에도
+  `StopAll`을 건다
