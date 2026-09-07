@@ -16,6 +16,18 @@ namespace Juahn.UiMotion.Editor
         /// <summary>미검증 노드에 붙는 클래스. 스타일을 바꾸고 싶으면 여기를 잡는다.</summary>
         public const string UnverifiedClass = "uimotion-unverified";
 
+        /// <summary>트리거 노드에 붙는 클래스. 스타일을 바꾸고 싶으면 여기를 잡는다.</summary>
+        public const string TriggerClass = "uimotion-trigger";
+
+        /// <summary>예약 이름(<c>Start</c>·<c>Loop</c>·<c>End</c>)의 트리거.</summary>
+        private static readonly Color ReservedTriggerTint = new Color(0.14f, 0.34f, 0.46f);
+
+        /// <summary>프로젝트가 직접 지은 이름의 트리거. 예약 이름과 색을 달리해 구분한다.</summary>
+        private static readonly Color CustomTriggerTint = new Color(0.30f, 0.24f, 0.44f);
+
+        /// <summary>이름이 없어 영영 발사되지 않는 트리거. 한눈에 잘못임이 보여야 한다.</summary>
+        private static readonly Color BrokenTriggerTint = new Color(0.50f, 0.20f, 0.16f);
+
         public NodeId Id;
         public MotionNodeBase Model;
 
@@ -35,7 +47,25 @@ namespace Juahn.UiMotion.Editor
         /// <summary>이 노드에서 새 간선을 뽑을 수 있는가.</summary>
         public bool AcceptsChildren { get; private set; }
 
+        /// <summary>
+        /// 이 노드로 새 간선을 이을 수 있는가.
+        ///
+        /// 트리거 노드는 흐름의 <b>시작점</b>이라 부모가 없다. <see cref="AcceptsChildren"/>과
+        /// 같은 이유로 포트 자체는 없애지 않는다 — 이미 그렇게 배선된 그래프를 열었을 때
+        /// 그 간선이 화면에 보이고 지울 수 있어야 하기 때문이다. 없애면 에셋에는 남아
+        /// 검사기가 계속 경고를 내는데 화면에서는 손댈 방법이 없다.
+        /// </summary>
+        public bool AcceptsParent { get; private set; }
+
         private readonly Label _issueBadge;
+
+        /// <summary>
+        /// 제목 아래 한 줄. 트리거의 재발사 정책이 여기 뜬다.
+        ///
+        /// 정책은 "다시 눌렀을 때 어떻게 되는가"라서 그래프를 볼 때 가장 자주 묻는 것인데,
+        /// 인스펙터를 열어야만 알 수 있으면 노드 열 개를 하나씩 눌러 보게 된다.
+        /// </summary>
+        private readonly Label _subtitle;
 
         /// <summary>
         /// 자식 실행 순서 목록.
@@ -56,14 +86,24 @@ namespace Juahn.UiMotion.Editor
 
             MotionNodeEntry entry = model == null ? null : MotionNodeCatalog.Find(model.GetType());
 
-            title = ResolveTitle(entry, model);
-            tooltip = entry == null || string.IsNullOrEmpty(entry.Summary) ? title : entry.Summary;
+            tooltip = entry == null || string.IsNullOrEmpty(entry.Summary) ? ResolveTitle(entry, model) : entry.Summary;
 
             Input = InstantiatePort(Orientation.Horizontal, Direction.Input, Port.Capacity.Multi, typeof(MotionNodeBase));
             Input.portName = string.Empty;
             inputContainer.Add(Input);
 
             AcceptsChildren = model == null || !model.BlocksChildren;
+            AcceptsParent = !(model is TriggerNode);
+
+            if (!AcceptsParent)
+            {
+                // 트리거 노드는 진입점이라 들어오는 흐름이 없다. 포트는 살려 두고
+                // 새 연결만 막는다(GetCompatiblePorts) — 이유는 AcceptsParent의 주석에.
+                Input.tooltip = "트리거는 흐름의 시작점이라 부모를 가질 수 없습니다";
+                Input.style.opacity = 0.25f;
+
+                AddToClassList(TriggerClass);
+            }
 
             Output = InstantiatePort(Orientation.Horizontal, Direction.Output, Port.Capacity.Multi, typeof(MotionNodeBase));
             Output.portName = string.Empty;
@@ -89,6 +129,15 @@ namespace Juahn.UiMotion.Editor
             _issueBadge.style.display = DisplayStyle.None;
             titleContainer.Add(_issueBadge);
 
+            _subtitle = MakeSubtitle();
+
+            // 제목 바로 아래에 끼운다. mainContainer(#node-border)의 자식은
+            // titleContainer와 contents 둘뿐이므로 그 사이가 제목 아래다.
+            int titleIndex = mainContainer.IndexOf(titleContainer);
+            mainContainer.Insert(titleIndex < 0 ? 0 : titleIndex + 1, _subtitle);
+
+            RefreshLabels();
+
             _childOrder = new VisualElement();
             _childOrder.style.display = DisplayStyle.None;
             _childOrder.style.paddingLeft = 6f;
@@ -99,6 +148,46 @@ namespace Juahn.UiMotion.Editor
 
             RefreshExpandedState();
             RefreshPorts();
+        }
+
+        /// <summary>
+        /// 제목과 부제를 모델에서 다시 만든다.
+        ///
+        /// <b>트리거는 제목이 데이터에 딸려 있다.</b> 다른 노드는 제목이 타입 이름이라
+        /// 한 번 정하면 바뀌지 않지만, 트리거는 인스펙터에서 이름을 고치는 순간
+        /// 캔버스의 제목도 따라와야 한다. 그러지 않으면 화면이 거짓말을 한다.
+        /// </summary>
+        public void RefreshLabels()
+        {
+            MotionNodeEntry entry = Model == null ? null : MotionNodeCatalog.Find(Model.GetType());
+            var trigger = Model as TriggerNode;
+
+            if (trigger == null)
+            {
+                title = ResolveTitle(entry, Model);
+                _subtitle.style.display = DisplayStyle.None;
+                return;
+            }
+
+            string name = MotionTriggerNames.Normalize(trigger.TriggerName);
+            bool named = name.Length > 0;
+
+            title = "Trigger: " + MotionTriggerNames.Describe(name);
+            tooltip = named
+                ? "Fire(\"" + name + "\")를 부르면 이 아래로 이어진 연출이 돕니다."
+                : "이름이 없으면 발사할 방법이 없습니다. 인스펙터에서 이름을 정하세요.";
+
+            _subtitle.style.display = DisplayStyle.Flex;
+            _subtitle.text = "재발사 " + MotionTriggerNames.DescribePolicy(trigger.Policy);
+            _subtitle.tooltip = MotionTriggerNames.PolicyTooltip(trigger.Policy);
+
+            Color tint = !named
+                ? BrokenTriggerTint
+                : MotionTriggerNames.IsReserved(name) ? ReservedTriggerTint : CustomTriggerTint;
+
+            titleContainer.style.backgroundColor = tint;
+            mainContainer.style.backgroundColor = Dim(tint, 0.45f);
+            _subtitle.style.backgroundColor = Dim(tint, 0.7f);
         }
 
         /// <summary>
@@ -205,6 +294,28 @@ namespace Juahn.UiMotion.Editor
             return level == MotionIssueLevel.Warning
                 ? new Color(0.85f, 0.55f, 0.15f)
                 : new Color(0.25f, 0.45f, 0.7f);
+        }
+
+        /// <summary>배경 색을 어둡게 한다. 알파는 그대로 둔다.</summary>
+        private static Color Dim(Color color, float factor)
+        {
+            return new Color(color.r * factor, color.g * factor, color.b * factor, color.a);
+        }
+
+        private static Label MakeSubtitle()
+        {
+            var label = new Label(string.Empty);
+
+            label.style.display = DisplayStyle.None;
+            label.style.paddingLeft = 8f;
+            label.style.paddingRight = 8f;
+            label.style.paddingTop = 1f;
+            label.style.paddingBottom = 1f;
+            label.style.fontSize = 10f;
+            label.style.color = new Color(0.88f, 0.90f, 0.94f);
+            label.style.whiteSpace = WhiteSpace.NoWrap;
+
+            return label;
         }
 
         private static Label MakeBadge(string text, Color background)

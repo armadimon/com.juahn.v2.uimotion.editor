@@ -17,7 +17,21 @@ namespace Juahn.UiMotion.Editor
         /// <summary>미검증 노드가 모이는 그룹 이름. 팔레트도 같은 이름을 쓴다.</summary>
         public const string UnverifiedGroupName = "미검증";
 
+        /// <summary>예약 트리거가 모이는 그룹 이름.</summary>
+        public const string TriggerGroupName = "트리거";
+
         private const string RootTitle = "노드 추가";
+
+        /// <summary>
+        /// 예약 트리거를 이름까지 정해진 채로 만드는 항목의 표식.
+        ///
+        /// 카탈로그의 <c>Trigger</c> 항목은 이름 없는 노드를 놓을 뿐이라 인스펙터에서
+        /// 이름을 다시 골라야 한다. 가장 흔한 셋은 그 두 단계를 한 단계로 줄인다.
+        /// </summary>
+        private sealed class TriggerCreation
+        {
+            public string Name;
+        }
 
         private MotionGraphViewImpl _view;
         private EditorWindow _window;
@@ -57,6 +71,10 @@ namespace Juahn.UiMotion.Editor
                 new SearchTreeGroupEntry(new GUIContent(RootTitle), 0),
             };
 
+            // 트리거를 맨 위에 둔다. 빈 그래프에서 가장 먼저 필요한 것이고,
+            // 트리거가 없으면 그 그래프는 아무것도 재생하지 않는다.
+            AppendTriggers(tree);
+
             // 카탈로그 순서를 그대로 쓴다 — 이미 카테고리별로 정렬돼 있고
             // Uncategorized가 마지막이다.
             IReadOnlyList<string> categories = MotionNodeCatalog.Categories;
@@ -73,18 +91,58 @@ namespace Juahn.UiMotion.Editor
 
         public bool OnSelectEntry(SearchTreeEntry searchTreeEntry, SearchWindowContext context)
         {
-            var entry = searchTreeEntry == null ? null : searchTreeEntry.userData as MotionNodeEntry;
-
-            if (entry == null || _view == null || _view.Graph == null)
+            if (searchTreeEntry == null || _view == null || _view.Graph == null)
             {
                 return false;
             }
 
             Vector2 position = ToGraphPosition(context.screenMousePosition, _window, _view);
+
+            var trigger = searchTreeEntry.userData as TriggerCreation;
+            if (trigger != null)
+            {
+                MotionNodeView made = _view.AddTriggerNode(trigger.Name, TriggerPolicy.Restart, position);
+
+                // 같은 이름이 이미 있으면 만들지 않고 그것을 돌려준다. 아무 일도 없었던
+                // 것처럼 두면 왜 안 생겼는지 알 수 없으므로 그 노드를 골라 보여 준다.
+                _view.SelectView(made);
+                return made != null;
+            }
+
+            var entry = searchTreeEntry.userData as MotionNodeEntry;
+            if (entry == null)
+            {
+                return false;
+            }
+
             return _view.AddNode(entry, position) != null;
         }
 
         // --- 트리 만들기 ----------------------------------------------------
+
+        private void AppendTriggers(List<SearchTreeEntry> tree)
+        {
+            IReadOnlyList<string> reserved = MotionTriggerNames.Reserved;
+
+            tree.Add(new SearchTreeGroupEntry(new GUIContent(TriggerGroupName), 1));
+
+            for (int i = 0; i < reserved.Count; i++)
+            {
+                string name = reserved[i];
+                string note = MotionTriggerNames.TopologyNote(name);
+
+                var content = new GUIContent(
+                    "Trigger: " + name,
+                    EnsureIndent(),
+                    note == null ? "이 이름으로 발사하면 아래 연출이 돕니다." : note);
+
+                tree.Add(new SearchTreeEntry(content)
+                {
+                    level = 2,
+                    userData = new TriggerCreation { Name = name },
+                });
+            }
+        }
 
         private void AppendCategory(List<SearchTreeEntry> tree, string category)
         {

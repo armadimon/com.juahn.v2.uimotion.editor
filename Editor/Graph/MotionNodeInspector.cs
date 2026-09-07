@@ -24,6 +24,9 @@ namespace Juahn.UiMotion.Editor
 
         private const string NewSlotLabel = "새 슬롯...";
 
+        /// <summary>트리거 이름 드롭다운의 마지막 항목. 예약 이름이 아닌 것을 고를 때 쓴다.</summary>
+        private const string FreeNameLabel = "직접 입력...";
+
         private readonly MotionGraphViewImpl _view;
         private readonly IMGUIContainer _body;
 
@@ -45,6 +48,18 @@ namespace Juahn.UiMotion.Editor
 
         /// <summary>이번 패스에서 <see cref="SlotRef"/>의 이름이 바뀌었는가.</summary>
         private bool _slotFieldChanged;
+
+        /// <summary>이번 패스에서 트리거의 이름이나 정책이 바뀌었는가.</summary>
+        private bool _triggerChanged;
+
+        /// <summary>
+        /// 이름 드롭다운이 "직접 입력"으로 고정된 노드의 id. 0이면 없다.
+        ///
+        /// 예약 이름을 쓰던 트리거를 다른 이름으로 바꾸려면 드롭다운이 "직접 입력"에
+        /// 머물러 있어야 한다. 값만 보고 정하면 이름이 아직 <c>Start</c>인 동안
+        /// 드롭다운이 도로 <c>Start</c>로 튕겨 아무 일도 일어나지 않은 것처럼 보인다.
+        /// </summary>
+        private int _freeNameNode;
 
         /// <summary>값이 바뀐 뒤 아직 검사를 다시 돌리지 않았는가.</summary>
         private bool _issuesStale;
@@ -70,6 +85,9 @@ namespace Juahn.UiMotion.Editor
             // 새 슬롯 입력 중이었다면 취소한다. 다른 노드에 이어서 쓰면 엉뚱한 필드가 바뀐다.
             _newSlotPath = string.Empty;
             _newSlotName = string.Empty;
+
+            // 트리거 이름의 "직접 입력" 상태도 노드마다 따로다.
+            _freeNameNode = 0;
 
             _body.MarkDirtyRepaint();
         }
@@ -124,11 +142,19 @@ namespace Juahn.UiMotion.Editor
 
             SerializedProperty node = FindNodeProperty(_serialized, id);
             _slotFieldChanged = false;
+            _triggerChanged = false;
 
             if (node == null)
             {
                 EditorGUILayout.HelpBox(
                     "직렬화된 노드를 찾지 못했습니다. 그래프를 다시 여세요.", MessageType.Error);
+            }
+            else if (model is TriggerNode)
+            {
+                // 트리거는 필드 둘이 전부지만 그냥 그리면 이름이 자유 입력이 된다.
+                // 오타 하나가 조용히 발사되지 않는 트리거를 만들므로 따로 그린다.
+                EditorGUILayout.Space();
+                DrawTriggerFields(graph, node, id);
             }
             else
             {
@@ -143,9 +169,16 @@ namespace Juahn.UiMotion.Editor
                 // 바뀌는 것은 SlotRef의 이름 하나뿐이다. 슬라이더를 끄는 동안
                 // ApplyModifiedProperties는 매 이벤트 true를 돌려주므로, 여기서 무조건
                 // 버리면 드래그 한 번에 그래프 전체 인덱스를 수십 번 다시 만든다.
-                if (_slotFieldChanged)
+                // 트리거의 이름과 정책도 인덱스가 캐시하는 파생값(트리거 목록)을 바꾼다.
+                if (_slotFieldChanged || _triggerChanged)
                 {
                     graph.Invalidate();
+                }
+
+                // 트리거는 제목과 부제가 데이터에 딸려 있으므로 캔버스도 따라와야 한다.
+                if (_triggerChanged)
+                {
+                    _view.RefreshLabels();
                 }
 
                 _issuesStale = true;
@@ -290,6 +323,201 @@ namespace Juahn.UiMotion.Editor
             string tooltip = param == null ? property.tooltip : param.Tooltip;
 
             return new GUIContent(text, tooltip);
+        }
+
+        // --- 트리거 --------------------------------------------------------
+
+        /// <summary>
+        /// 트리거 노드의 이름과 재발사 정책을 그린다.
+        ///
+        /// <b>이름을 자유 입력만으로 두면 안 된다.</b> 오타 하나가 아무 경고 없이 영영
+        /// 발사되지 않는 트리거를 만든다 — <c>Fire("Strat")</c>는 런타임에 경고 한 줄을
+        /// 내고 끝이고, 그 경고는 발사한 쪽에서 난다. 그래서 예약 이름을 먼저 보여 주고
+        /// 자유 입력은 그 아래에 둔다.
+        /// </summary>
+        private void DrawTriggerFields(MotionGraph graph, SerializedProperty node, NodeId id)
+        {
+            SerializedProperty nameProperty = node.FindPropertyRelative("TriggerName");
+            SerializedProperty policyProperty = node.FindPropertyRelative("Policy");
+
+            if (nameProperty == null || policyProperty == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "트리거 노드의 필드를 찾지 못했습니다. 그래프를 다시 여세요.", MessageType.Error);
+                return;
+            }
+
+            // 안내줄의 유무를 이 패스가 시작될 때의 값으로 고정한다.
+            //
+            // 아래에서 이름이 바뀌면 경고가 늘거나 줄어드는데 그것을 그 자리에서 반영하면
+            // 같은 GUI 패스 안에서 컨트롤 개수가 달라져 IMGUI가 예외를 던진다
+            // ("Getting control N's position in a group with only M controls").
+            // 값이 바뀌는 이벤트(KeyDown · ExecuteCommand)는 Layout 패스가 아니므로,
+            // 패스 진입 시점의 값으로 세면 Layout과 개수가 언제나 일치한다.
+            string entryName = MotionTriggerNames.Normalize(nameProperty.stringValue);
+            bool wasEmpty = entryName.Length == 0;
+            bool wasDuplicate = !wasEmpty && CountTriggersNamed(graph, entryName) > 1;
+            string topology = MotionTriggerNames.TopologyNote(entryName);
+
+            DrawTriggerNameRow(nameProperty, entryName, id);
+            DrawTriggerPolicyRow(policyProperty);
+
+            if (wasEmpty)
+            {
+                EditorGUILayout.HelpBox(
+                    "이름이 없는 트리거는 발사할 방법이 없습니다. 이 아래로 이어진 연출은 " +
+                    "영영 실행되지 않습니다.",
+                    MessageType.Error);
+            }
+            else if (wasDuplicate)
+            {
+                EditorGUILayout.HelpBox(
+                    "'" + entryName + "' 트리거 노드가 둘 이상입니다. 먼저 나온 것만 동작하고 " +
+                    "나머지는 무시됩니다.",
+                    MessageType.Warning);
+            }
+
+            if (topology != null)
+            {
+                EditorGUILayout.HelpBox(topology, MessageType.Info);
+            }
+        }
+
+        private void DrawTriggerNameRow(SerializedProperty nameProperty, string current, NodeId id)
+        {
+            IReadOnlyList<string> reserved = MotionTriggerNames.Reserved;
+
+            var options = new string[reserved.Count + 1];
+            for (int i = 0; i < reserved.Count; i++)
+            {
+                options[i] = reserved[i];
+            }
+
+            options[reserved.Count] = FreeNameLabel;
+
+            // 예약 이름이 아니거나 "직접 입력"으로 고정돼 있으면 마지막 항목이다.
+            int index = reserved.Count;
+
+            if (_freeNameNode != id.Value)
+            {
+                for (int i = 0; i < reserved.Count; i++)
+                {
+                    if (string.Equals(reserved[i], current, StringComparison.Ordinal))
+                    {
+                        index = i;
+                        break;
+                    }
+                }
+            }
+
+            int picked = EditorGUILayout.Popup(
+                new GUIContent(
+                    "트리거 이름",
+                    "런타임과 어댑터는 예약 이름으로 발사합니다. 철자가 다르면 아무도 부르지 않습니다."),
+                index,
+                options);
+
+            if (picked != index)
+            {
+                if (picked == reserved.Count)
+                {
+                    // 값은 그대로 두고 아래 입력줄에서 고치게 한다. 여기서 비우면
+                    // 이름을 다 지운 것이 되어 그 사이에 검사기가 오류를 낸다.
+                    _freeNameNode = id.Value;
+                }
+                else
+                {
+                    _freeNameNode = 0;
+                    nameProperty.stringValue = reserved[picked];
+                    _triggerChanged = true;
+                }
+            }
+
+            // 입력줄은 언제나 그린다. 드롭다운 선택에 따라 줄을 넣고 빼면 같은 GUI 패스
+            // 안에서 컨트롤 개수가 달라진다.
+            EditorGUI.BeginChangeCheck();
+
+            string typed = EditorGUILayout.TextField(
+                new GUIContent(
+                    "직접 입력",
+                    "예약 이름이 아닌 트리거는 여기에 적습니다. 앞뒤 공백은 잘려 대조됩니다."),
+                nameProperty.stringValue);
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                nameProperty.stringValue = typed;
+                _triggerChanged = true;
+
+                // 손으로 예약 이름을 그대로 쳤다면 드롭다운도 그것을 가리키는 편이 맞다.
+                _freeNameNode = MotionTriggerNames.IsReserved(MotionTriggerNames.Normalize(typed))
+                    ? 0
+                    : id.Value;
+            }
+        }
+
+        private void DrawTriggerPolicyRow(SerializedProperty policyProperty)
+        {
+            IReadOnlyList<TriggerPolicy> values = MotionTriggerNames.Policies;
+
+            var options = new GUIContent[values.Count];
+            int index = 0;
+
+            for (int i = 0; i < values.Count; i++)
+            {
+                options[i] = new GUIContent(
+                    MotionTriggerNames.DescribePolicy(values[i]),
+                    MotionTriggerNames.PolicyTooltip(values[i]));
+
+                if ((int)values[i] == policyProperty.intValue)
+                {
+                    index = i;
+                }
+            }
+
+            int picked = EditorGUILayout.Popup(
+                new GUIContent("재발사 정책", "이미 돌고 있는데 다시 발사했을 때의 처리."),
+                index,
+                options);
+
+            if (picked != index)
+            {
+                policyProperty.intValue = (int)values[picked];
+                _triggerChanged = true;
+            }
+
+            // 툴팁은 드롭다운을 펼쳐야 보인다. 지금 고른 것이 무엇을 뜻하는지는
+            // 펼치지 않고도 보여야 한다.
+            EditorGUILayout.LabelField(
+                MotionTriggerNames.PolicyTooltip(values[picked]), EditorStyles.wordWrappedMiniLabel);
+        }
+
+        /// <summary>
+        /// 이 이름의 트리거 노드가 몇 개인가.
+        ///
+        /// <c>graph.Triggers</c>가 아니라 노드를 직접 센다 — 그 목록은 이미 중복을
+        /// 걸러낸 뒤라 중복이 있다는 사실 자체가 보이지 않는다.
+        /// </summary>
+        private static int CountTriggersNamed(MotionGraph graph, string triggerName)
+        {
+            IReadOnlyList<MotionNodeBase> nodes = graph.Nodes;
+            int count = 0;
+
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var trigger = nodes[i] as TriggerNode;
+                if (trigger == null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(
+                        MotionTriggerNames.Normalize(trigger.TriggerName), triggerName, StringComparison.Ordinal))
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         // --- 슬롯 ----------------------------------------------------------

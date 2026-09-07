@@ -115,7 +115,7 @@ namespace Juahn.UiMotion.Editor
         }
 
         /// <summary>
-        /// 노드 하나짜리 예시. <c>Start</c> 트리거가 그 노드를 가리킨다.
+        /// 노드 하나짜리 예시. <c>Start</c> 트리거 노드가 그 노드로 이어진다.
         ///
         /// 유지 연출 노드(<c>Float</c>·<c>Bounce</c>)는 <c>Loop</c>에 문다 — <c>Start</c>에
         /// 물면 검사기가 "Loop가 한 번 돌고 끝난다"가 아니라 다른 문제를 내고, 무엇보다
@@ -130,11 +130,28 @@ namespace Juahn.UiMotion.Editor
             }
 
             var graph = ScriptableObject.CreateInstance<MotionGraph>();
-            NodeId id = graph.AddNode(node);
 
-            string trigger = node.BlocksChildren ? MotionRuntime.LoopTrigger : MotionRuntime.StartTrigger;
-            graph.SetTrigger(trigger, id);
-            graph.SetNodePosition(id, new Vector2(120f, 80f));
+            // 예시로 만들 노드가 트리거 노드 자신인 경우. 트리거를 하나 더 만들면
+            // 트리거가 트리거로 이어지는, 아무도 그렇게 쓰지 않는 예시가 된다.
+            // 그러므로 이 노드에 이름만 준다.
+            var asTrigger = node as TriggerNode;
+            if (asTrigger != null)
+            {
+                asTrigger.TriggerName = MotionRuntime.StartTrigger;
+
+                NodeId onlyId = graph.AddNode(node);
+                graph.SetNodePosition(onlyId, new Vector2(120f, 80f));
+                return graph;
+            }
+
+            NodeId nodeId = graph.AddNode(node);
+
+            string triggerName = node.BlocksChildren ? MotionRuntime.LoopTrigger : MotionRuntime.StartTrigger;
+            NodeId triggerId = graph.AddTrigger(triggerName);
+            graph.Link(triggerId, nodeId);
+
+            graph.SetNodePosition(triggerId, new Vector2(60f, 80f));
+            graph.SetNodePosition(nodeId, new Vector2(320f, 80f));
 
             return graph;
         }

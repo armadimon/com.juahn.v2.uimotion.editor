@@ -167,7 +167,13 @@ namespace Juahn.UiMotion.Editor
             return _views.TryGetValue(id.Value, out view) ? view : null;
         }
 
-        /// <summary>노드 하나를 골라 화면에 띄운다. 트리거 패널의 "진입 노드 보기"가 쓴다.</summary>
+        /// <summary>
+        /// 화면 한가운데의 그래프 좌표. 새 노드를 어디에 놓을지 정할 때 쓴다.
+        /// 화면 밖에 만들면 사람이 그것을 찾지 못한다.
+        /// </summary>
+        public Vector2 ViewCenter => contentViewContainer.WorldToLocal(worldBound.center);
+
+        /// <summary>노드 하나를 골라 화면에 띄운다. 트리거 패널의 "보기"가 쓴다.</summary>
         public void FocusNode(NodeId id)
         {
             MotionNodeView view = FindView(id);
@@ -249,6 +255,23 @@ namespace Juahn.UiMotion.Editor
 
                 view.SetChildOrder(titles);
             }
+        }
+
+        /// <summary>
+        /// 노드 제목과 부제를 다시 만든다.
+        ///
+        /// 트리거 노드는 제목이 <c>TriggerName</c>에, 부제가 <c>Policy</c>에 딸려 있어
+        /// 인스펙터에서 그것을 고치면 캔버스도 따라와야 한다. 제목이 바뀌면 다른 노드의
+        /// 자식 목록에 적힌 이름도 낡으므로 자식 순서까지 함께 다시 그린다.
+        /// </summary>
+        public void RefreshLabels()
+        {
+            foreach (KeyValuePair<int, MotionNodeView> pair in _views)
+            {
+                pair.Value.RefreshLabels();
+            }
+
+            RefreshChildOrder();
         }
 
         private string TitleOf(NodeId id)
@@ -393,7 +416,14 @@ namespace Juahn.UiMotion.Editor
                 return compatible;
             }
 
-            // 반대 방향에서 끌어올 때도 같은 노드를 부모로 삼을 수 없다.
+            // 트리거 노드는 흐름의 시작점이라 부모를 가질 수 없다. 트리거의 입력 포트에서
+            // 끌기 시작한 경우가 여기다. 같은 이유로 포트 자체는 살려 둔다.
+            if (start.direction == Direction.Input && startView != null && !startView.AcceptsParent)
+            {
+                return compatible;
+            }
+
+            // 반대 방향에서 끌어올 때도 같은 규칙이 걸려야 한다.
             bool wantsParent = start.direction == Direction.Input;
 
             ports.ForEach(delegate(Port candidate)
@@ -408,10 +438,13 @@ namespace Juahn.UiMotion.Editor
                     return;
                 }
 
-                if (wantsParent)
+                var candidateView = candidate.node as MotionNodeView;
+
+                if (candidateView != null)
                 {
-                    var candidateView = candidate.node as MotionNodeView;
-                    if (candidateView != null && !candidateView.AcceptsChildren)
+                    // 부모를 찾는 중이면 후보는 출력 포트, 자식을 찾는 중이면 입력 포트다.
+                    bool allowed = wantsParent ? candidateView.AcceptsChildren : candidateView.AcceptsParent;
+                    if (!allowed)
                     {
                         return;
                     }
@@ -568,6 +601,57 @@ namespace Juahn.UiMotion.Editor
             RefreshIssues();
 
             return _views[id.Value];
+        }
+
+        /// <summary>
+        /// 트리거 노드를 넣는다. 팔레트와 트리거 패널의 "트리거 추가"가 쓴다.
+        ///
+        /// <b>같은 이름이 이미 있으면 만들지 않고 그 노드를 돌려준다.</b> 이름이 겹치면
+        /// 뒤엣것은 코어가 무시하므로(<c>TriggerIntrospector</c>: 먼저 나온 것이 이긴다)
+        /// 만들어 봐야 영영 발사되지 않는 노드가 하나 느는 것뿐이다. 대신 있는 것을
+        /// 돌려주면 부르는 쪽이 그것을 골라 보여 줄 수 있다.
+        /// </summary>
+        public MotionNodeView AddTriggerNode(string triggerName, TriggerPolicy policy, Vector2 position)
+        {
+            if (_graph == null || string.IsNullOrWhiteSpace(triggerName))
+            {
+                return null;
+            }
+
+            NodeId existing = _graph.FindTrigger(triggerName);
+            if (existing.IsValid)
+            {
+                return FindView(existing);
+            }
+
+            Undo.RegisterCompleteObjectUndo(_graph, "Add Motion Trigger");
+
+            NodeId id = _graph.AddTrigger(triggerName, policy);
+            if (!id.IsValid)
+            {
+                return null;
+            }
+
+            _graph.SetNodePosition(id, position);
+            EditorUtility.SetDirty(_graph);
+
+            CreateView(id);
+            RefreshChildOrder();
+            RefreshIssues();
+
+            return _views[id.Value];
+        }
+
+        /// <summary>노드를 하나 넣고 바로 고른 상태로 만든다. 어디에 생겼는지 못 찾는 것을 막는다.</summary>
+        public void SelectView(MotionNodeView view)
+        {
+            if (view == null)
+            {
+                return;
+            }
+
+            ClearSelection();
+            AddToSelection(view);
         }
     }
 }

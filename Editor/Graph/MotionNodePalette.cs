@@ -42,6 +42,7 @@ namespace Juahn.UiMotion.Editor
             style.borderRightColor = new Color(0f, 0f, 0f, 0.35f);
 
             Add(BuildHeader());
+            Add(BuildTriggerRow());
 
             _list = new ScrollView(ScrollViewMode.Vertical);
             _list.style.flexGrow = 1f;
@@ -108,6 +109,69 @@ namespace Juahn.UiMotion.Editor
             header.Add(refresh);
 
             return header;
+        }
+
+        /// <summary>
+        /// 예약 트리거를 한 번에 만드는 줄.
+        ///
+        /// 목록의 <c>Trigger</c> 항목은 이름 없는 노드를 놓을 뿐이라 인스펙터에서 이름을
+        /// 다시 골라야 한다. 가장 흔한 셋(<c>Start</c>·<c>Loop</c>·<c>End</c>)은 그 두
+        /// 단계를 한 단계로 줄인다. 목록보다 위에 두는 이유는 빈 그래프에서 가장 먼저
+        /// 필요한 것이 트리거이기 때문이다 — 트리거가 없으면 아무것도 재생되지 않는다.
+        /// </summary>
+        private VisualElement BuildTriggerRow()
+        {
+            var box = new VisualElement();
+            box.style.paddingLeft = 4f;
+            box.style.paddingRight = 4f;
+            box.style.paddingBottom = 4f;
+
+            var title = new Label("트리거");
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.marginBottom = 2f;
+            title.tooltip = "그래프의 시작점입니다. 캔버스에 노드로 놓입니다.";
+            box.Add(title);
+
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+
+            IReadOnlyList<string> reserved = MotionTriggerNames.Reserved;
+
+            for (int i = 0; i < reserved.Count; i++)
+            {
+                string name = reserved[i];
+                string note = MotionTriggerNames.TopologyNote(name);
+
+                var button = new Button(delegate { AddTriggerToGraph(name); }) { text = name };
+
+                button.tooltip = note == null
+                    ? "이 이름의 트리거 노드를 만듭니다."
+                    : note;
+                button.style.flexGrow = 1f;
+                button.style.marginLeft = 0f;
+                button.style.marginRight = 0f;
+
+                row.Add(button);
+            }
+
+            box.Add(row);
+            return box;
+        }
+
+        private void AddTriggerToGraph(string triggerName)
+        {
+            if (_view == null || _view.Graph == null)
+            {
+                return;
+            }
+
+            // 화면 한가운데. 어디에 생겼는지 못 찾는 것을 막는다.
+            MotionNodeView added = _view.AddTriggerNode(
+                triggerName, TriggerPolicy.Restart, _view.ViewCenter);
+
+            // 같은 이름이 이미 있으면 만들지 않고 그것을 돌려준다. 그 경우에도 골라 주어야
+            // "눌렀는데 아무 일도 없었다"가 되지 않는다.
+            _view.SelectView(added);
         }
 
         private VisualElement BuildDetail(

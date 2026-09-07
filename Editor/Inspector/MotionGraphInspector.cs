@@ -224,34 +224,36 @@ namespace Juahn.UiMotion.Editor
                         continue;
                     }
 
-                    bool entryMissing = !trigger.Entry.IsValid || graph.GetNode(trigger.Entry) == null;
-                    DrawTriggerRow(trigger, entryMissing);
+                    // 진입점은 이제 트리거 노드 자신이라 "없을" 수가 없다. 대신 잘못될 수
+                    // 있는 것은 그 아래가 비는 것이다 — 발사해도 아무 일이 일어나지 않는다.
+                    int childCount = graph.GetChildren(trigger.Entry).Count;
+                    DrawTriggerRow(trigger, childCount);
                 }
             }
         }
 
-        private static void DrawTriggerRow(TriggerDeclaration trigger, bool entryMissing)
+        private static void DrawTriggerRow(TriggerDeclaration trigger, int childCount)
         {
+            bool empty = childCount == 0;
+
             Rect rect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
-            if (entryMissing)
+            if (empty)
             {
                 EditorGUI.DrawRect(new Rect(rect.x, rect.y - 1f, rect.width, rect.height + 2f), BadRowTint);
             }
 
             string name = string.IsNullOrEmpty(trigger.Name) ? "(이름 없음)" : trigger.Name;
-            string entry = entryMissing
-                ? "진입 노드 없음"
-                : "진입 " + trigger.Entry;
 
             EditorGUI.LabelField(
                 rect,
-                new GUIContent(name, "재발사 정책: " + trigger.Policy),
-                new GUIContent(trigger.Policy + "  ·  " + entry));
+                new GUIContent(name, "재발사 정책: " + trigger.Policy + "\n트리거 노드 " + trigger.Entry),
+                new GUIContent(trigger.Policy + "  ·  자식 " + childCount));
 
-            if (entryMissing)
+            if (empty)
             {
                 EditorGUILayout.HelpBox(
-                    "'" + name + "' 트리거에 진입 노드가 없습니다. 쏘아도 아무 일도 일어나지 않습니다.",
+                    "'" + name + "' 트리거 노드 아래에 이어진 노드가 없습니다. " +
+                    "쏘아도 아무 일도 일어나지 않습니다.",
                     MessageType.Error);
             }
         }
