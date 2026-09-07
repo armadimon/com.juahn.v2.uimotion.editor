@@ -71,3 +71,14 @@ Node Doctor.
   (`ExitingEditMode` · `ExitingPlayMode`)에도 같은 정리가 돈다
 - `MotionPlayerEditor`의 트리거 시험 재생이 에디트 모드에서도 동작한다. 프리뷰 중에는
   "프리뷰 멈추기"가 함께 뜨고, 대상이 실제로 움직인다는 것을 안내한다
+
+예시 그래프 생성기.
+
+- `MotionSampleGenerator` — 카탈로그의 모든 노드에 대해 `[MotionNode(Sample = "...")]`가
+  가리키는 최소 그래프를 만든다. 노드 하나에 트리거 하나짜리 그래프이며, 끝나지 않는
+  노드(`Float`·`Bounce`)는 `Start`가 아니라 `Loop`에 문다 — 그것이 그 노드를 실제로 쓰는
+  방식이고 검사기도 그때만 통과한다
+- **덮어쓰지 않는다.** 사람이 예시를 손봤을 수 있으므로 이미 있는 것은 건너뛴다.
+  `Window > UI Motion > Generate Missing Samples`
+- 예시 폴더는 이 스크립트 자신의 에셋 경로에서 역산한다. 패키지가 `Packages/`에
+  임베드돼 있든 캐시에서 왔든 같은 자리에 만든다
