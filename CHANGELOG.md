@@ -58,3 +58,16 @@ Node Doctor.
 - `MotionNodeDoctorWindow` — 같은 검사를 표로 보여 준다. 통과하지 못한 것이 위로 올라오고,
   행을 누르면 무엇이 빠졌는지와 예시 에셋을 보여 준다. 검사는 열 때와 "다시 검사"를 눌렀을
   때만 돈다 — 노드마다 `AssetDatabase.FindAssets`를 부르기 때문이다
+
+인에디터 프리뷰.
+
+- `MotionPreviewDriver` — 플레이 모드에 들어가지 않고 그래프를 실제 프리팹 위에서 재생한다.
+  `MotionPump`는 플레이 중이 아니면 아무것도 하지 않으므로 `EditorApplication.update`가
+  대신 `MotionPlayer.TickFromPump`에 시간을 넣는다. 창이 가려져 몇 초씩 건너뛴 delta는
+  0.1초로 자른다 — 그대로 넣으면 연출이 통째로 끝나 버린다
+- **프리뷰는 프리팹으로 새어 나가지 않는다.** 멈출 때 `MotionPlayer.StopAll()`이 스코프를
+  취소하고 취소가 등록된 원상 복구를 역순으로 전부 돌린다. 도메인 리로드
+  (`AssemblyReloadEvents.beforeAssemblyReload`)와 플레이 모드 전환 직전
+  (`ExitingEditMode` · `ExitingPlayMode`)에도 같은 정리가 돈다
+- `MotionPlayerEditor`의 트리거 시험 재생이 에디트 모드에서도 동작한다. 프리뷰 중에는
+  "프리뷰 멈추기"가 함께 뜨고, 대상이 실제로 움직인다는 것을 안내한다

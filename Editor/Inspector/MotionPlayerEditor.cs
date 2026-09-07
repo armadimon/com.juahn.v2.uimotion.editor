@@ -42,6 +42,7 @@ namespace Juahn.UiMotion.Editor
         private PendingAction _pending;
         private string _pendingFire;
         private string _pendingStop;
+        private bool _pendingStopPreview;
 
         private bool _hasBindResult;
         private SlotAutoBinder.Result _bindResult;
@@ -62,10 +63,11 @@ namespace Juahn.UiMotion.Editor
         /// <summary>
         /// 플레이 중에는 트리거 버튼의 재생 상태가 매 프레임 바뀐다. 다시 그리지 않으면
         /// "재생 중"이 끝난 뒤에도 그대로 남아 사람이 잘못 읽는다.
+        /// 에디터 프리뷰 중에도 같은 이유로 계속 다시 그린다.
         /// </summary>
         public override bool RequiresConstantRepaint()
         {
-            return Application.isPlaying;
+            return Application.isPlaying || MotionPreviewDriver.IsPreviewingPlayer(target as MotionPlayer);
         }
 
         public override void OnInspectorGUI()
@@ -308,49 +310,65 @@ namespace Juahn.UiMotion.Editor
         {
             EditorGUILayout.LabelField("트리거 시험 재생", EditorStyles.boldLabel);
 
-            if (!Application.isPlaying)
-            {
-                EditorGUILayout.HelpBox("플레이 모드에서만 시험 재생할 수 있습니다.", MessageType.Info);
-            }
-            else if (player.IsTriggerOwnershipClaimed)
-            {
-                EditorGUILayout.HelpBox(
-                    "호스트가 트리거를 몰아 쓰는 중입니다. 여기서 쏘면 호스트의 순서와 겹칠 수 있습니다.",
-                    MessageType.Warning);
-            }
+            bool previewing = MotionPreviewDriver.IsPreviewingPlayer(player);
 
-            using (new EditorGUI.DisabledScope(!Application.isPlaying))
+            if (Application.isPlaying)
             {
-                IReadOnlyList<TriggerDeclaration> triggers = graph.Triggers;
-                for (int i = 0; i < triggers.Count; i++)
+                if (player.IsTriggerOwnershipClaimed)
                 {
-                    TriggerDeclaration trigger = triggers[i];
-                    if (trigger == null || string.IsNullOrEmpty(trigger.Name))
+                    EditorGUILayout.HelpBox(
+                        "호스트가 트리거를 몰아 쓰는 중입니다. 여기서 쏘면 호스트의 순서와 겹칠 수 있습니다.",
+                        MessageType.Warning);
+                }
+            }
+            else
+            {
+                // 에디터 프리뷰는 대상을 진짜로 움직인다. 되돌리는 방법을 먼저 말해 둔다.
+                EditorGUILayout.HelpBox(
+                    previewing
+                        ? "프리뷰 중입니다. 대상이 실제로 움직이고 있습니다. \"프리뷰 멈추기\"를 누르면 원래대로 돌아갑니다."
+                        : "플레이 모드에 들어가지 않고 여기서 바로 재생해 볼 수 있습니다. 대상이 실제로 움직이므로 확인한 뒤에는 멈춰서 원래대로 돌리세요.",
+                    MessageType.Info);
+            }
+
+            IReadOnlyList<TriggerDeclaration> triggers = graph.Triggers;
+            for (int i = 0; i < triggers.Count; i++)
+            {
+                TriggerDeclaration trigger = triggers[i];
+                if (trigger == null || string.IsNullOrEmpty(trigger.Name))
+                {
+                    continue;
+                }
+
+                bool playing = player.IsPlaying(trigger.Name);
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUILayout.LabelField(
+                        new GUIContent(trigger.Name, "재발사 정책: " + trigger.Policy),
+                        GUILayout.MinWidth(60f));
+
+                    if (GUILayout.Button(playing ? "다시 재생" : "재생", GUILayout.Width(80f)))
                     {
-                        continue;
+                        _pendingFire = trigger.Name;
                     }
 
-                    bool playing = Application.isPlaying && player.IsPlaying(trigger.Name);
-
-                    using (new EditorGUILayout.HorizontalScope())
+                    using (new EditorGUI.DisabledScope(!playing))
                     {
-                        EditorGUILayout.LabelField(
-                            new GUIContent(trigger.Name, "재발사 정책: " + trigger.Policy),
-                            GUILayout.MinWidth(60f));
-
-                        if (GUILayout.Button(playing ? "다시 재생" : "재생", GUILayout.Width(80f)))
+                        if (GUILayout.Button("정지", GUILayout.Width(60f)))
                         {
-                            _pendingFire = trigger.Name;
-                        }
-
-                        using (new EditorGUI.DisabledScope(!playing))
-                        {
-                            if (GUILayout.Button("정지", GUILayout.Width(60f)))
-                            {
-                                _pendingStop = trigger.Name;
-                            }
+                            _pendingStop = trigger.Name;
                         }
                     }
+                }
+            }
+
+            if (!Application.isPlaying && previewing)
+            {
+                if (GUILayout.Button(new GUIContent("프리뷰 멈추기",
+                        "재생 중인 것을 전부 취소하고 대상을 프리뷰 전 상태로 돌린다.")))
+                {
+                    _pendingStopPreview = true;
                 }
             }
         }
@@ -462,21 +480,30 @@ namespace Juahn.UiMotion.Editor
                 Repaint();
             }
 
-            if (!Application.isPlaying)
+            if (_pendingStopPreview)
             {
-                _pendingFire = null;
-                _pendingStop = null;
-                return;
+                _pendingStopPreview = false;
+                MotionPreviewDriver.Stop(player);
             }
 
             if (_pendingFire != null)
             {
-                player.Fire(_pendingFire);
+                // 플레이 중에는 진짜 펌프가 굴린다. 아니면 에디터 프리뷰가 시간을 넣는다.
+                if (Application.isPlaying)
+                {
+                    player.Fire(_pendingFire);
+                }
+                else
+                {
+                    MotionPreviewDriver.Fire(player, _pendingFire);
+                }
+
                 _pendingFire = null;
             }
 
             if (_pendingStop != null)
             {
+                // 스코프 취소가 등록된 원상 복구를 돌린다. 프리뷰에서도 같은 경로다.
                 player.Stop(_pendingStop);
                 _pendingStop = null;
             }
