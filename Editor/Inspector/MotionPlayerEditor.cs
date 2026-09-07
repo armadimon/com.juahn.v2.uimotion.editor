@@ -39,6 +39,9 @@ namespace Juahn.UiMotion.Editor
         private MotionGraph _issuesFor;
         private bool _issuesValid;
 
+        /// <summary>검사 결과를 만들 때의 <c>GetDirtyCount</c>. 그래프 참조가 그대로여도 변경을 알아챈다.</summary>
+        private int _issuesDirtyCount;
+
         private PendingAction _pending;
         private string _pendingFire;
         private string _pendingStop;
@@ -58,6 +61,20 @@ namespace Juahn.UiMotion.Editor
             _bindingsProperty = serializedObject.FindProperty("_bindings");
             _playOnEnableProperty = serializedObject.FindProperty("_playOnEnable");
             _issuesValid = false;
+
+            Undo.undoRedoPerformed += OnUndoRedo;
+        }
+
+        private void OnDisable()
+        {
+            Undo.undoRedoPerformed -= OnUndoRedo;
+        }
+
+        /// <summary>되돌리기는 그래프의 노드와 간선을 통째로 바꾼다. 검사 결과가 그대로면 거짓말이 된다.</summary>
+        private void OnUndoRedo()
+        {
+            _issuesValid = false;
+            Repaint();
         }
 
         /// <summary>
@@ -423,9 +440,18 @@ namespace Juahn.UiMotion.Editor
             }
         }
 
+        /// <summary>
+        /// 검사 결과를 필요할 때만 다시 만든다.
+        ///
+        /// <b>그래프 참조만으로는 부족하다.</b> 그래프 창에서 노드를 고쳐도 여기 꽂힌 참조는
+        /// 그대로라, 참조만 비교하면 "오류 N · 경고 M"이 조용히 낡는다.
+        /// <c>GetDirtyCount</c>는 에셋이 바뀔 때마다 오르므로 그 변경을 알아챈다.
+        /// </summary>
         private void EnsureIssues(MotionGraph graph)
         {
-            if (_issuesValid && _issuesFor == graph)
+            int dirtyCount = EditorUtility.GetDirtyCount(graph);
+
+            if (_issuesValid && _issuesFor == graph && _issuesDirtyCount == dirtyCount)
             {
                 return;
             }
@@ -433,6 +459,7 @@ namespace Juahn.UiMotion.Editor
             _issues.Clear();
             MotionGraphValidator.Validate(graph, _issues);
             _issuesFor = graph;
+            _issuesDirtyCount = dirtyCount;
             _issuesValid = true;
         }
 

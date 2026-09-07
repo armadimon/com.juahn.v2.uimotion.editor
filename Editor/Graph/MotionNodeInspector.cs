@@ -82,8 +82,15 @@ namespace Juahn.UiMotion.Editor
             MotionNodeBase model = graph.GetNode(id);
             if (model == null)
             {
+                // 여기는 정상 경로로는 닿지 않는다. 결손 노드는 배열에 null로 남고
+                // NodeIds가 그것을 건너뛰므로 뷰가 만들어지지 않고, 뷰가 없으면 고를 수도 없다.
+                // 남겨 두는 것은 뷰와 에셋이 어긋난 상태(밖에서 에셋이 바뀌었는데 아직 다시
+                // 읽지 않은 순간)에서 인스펙터가 NullReference로 죽지 않게 하기 위해서다.
+                // 결손 노드를 실제로 지우는 자리는 그래프 에셋 인스펙터의 "결손 노드 정리"다.
                 EditorGUILayout.HelpBox(
-                    "타입이 사라진 노드입니다. 실행 시 건너뛰어집니다.", MessageType.Error);
+                    "이 노드를 읽지 못했습니다. 그래프 에셋 인스펙터의 \"결손 노드 정리\"로 " +
+                    "타입이 사라진 노드를 지울 수 있습니다.",
+                    MessageType.Error);
                 return;
             }
 

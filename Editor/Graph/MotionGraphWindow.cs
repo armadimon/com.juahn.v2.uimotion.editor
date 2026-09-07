@@ -78,6 +78,14 @@ namespace Juahn.UiMotion.Editor
         private void OnDisable()
         {
             Undo.undoRedoPerformed -= OnUndoRedo;
+
+            // 검색 제공자는 ScriptableObject라 창이 사라질 때 여기서 지운다.
+            // 뷰의 DetachFromPanelEvent로 지우면 도킹이나 레이아웃 변경만으로도
+            // 파괴돼 노드 검색이 조용히 죽는다.
+            if (_view != null)
+            {
+                _view.DisposeSearch();
+            }
         }
 
         private void CreateGUI()

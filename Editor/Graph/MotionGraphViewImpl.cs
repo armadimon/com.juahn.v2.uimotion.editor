@@ -20,6 +20,7 @@ namespace Juahn.UiMotion.Editor
         private MotionGraph _graph;
         private bool _loading;
         private MotionNodeSearchProvider _searchProvider;
+        private EditorWindow _searchOwner;
 
         public MotionGraphViewImpl()
         {
@@ -43,38 +44,59 @@ namespace Juahn.UiMotion.Editor
         /// 창을 받아야 하는 이유는 화면 좌표를 그래프 좌표로 바꾸려면 창의 위치가 필요하기
         /// 때문이다. 그것 없이 화면 좌표를 그대로 쓰면 스크롤하거나 줌한 상태에서 노드가
         /// 엉뚱한 곳에 생긴다.
+        ///
+        /// 제공자는 여기서 만들지 않는다 — <see cref="OpenSearchWindow"/>가 필요할 때 만든다.
+        /// 그래야 중간에 한 번 파괴되더라도 다음 호출에서 되살아난다.
         /// </summary>
         public void SetupSearch(EditorWindow window)
         {
-            if (window == null || _searchProvider != null)
+            if (window == null)
             {
                 return;
             }
 
-            _searchProvider = MotionNodeSearchProvider.Create(this, window);
+            _searchOwner = window;
             nodeCreationRequest = OpenSearchWindow;
-
-            // ScriptableObject라 아무도 지우지 않으면 도메인 리로드까지 남는다.
-            RegisterCallback<DetachFromPanelEvent>(OnDetachedFromPanel);
         }
 
+        /// <summary>
+        /// 검색 창을 연다. 제공자가 없으면 그때 만든다.
+        ///
+        /// <b>제공자를 <c>DetachFromPanelEvent</c>에서 파괴하면 안 된다.</b> 그 이벤트는 창을
+        /// 닫을 때만이 아니라 도킹 · 언도킹 · Shift+Space 최대화 · 레이아웃 변경 때도 온다.
+        /// 그때 파괴해 버리면 스페이스와 우클릭이 도메인 리로드까지 조용히 아무 일도 하지
+        /// 않는다. 정리는 창이 실제로 사라질 때(<see cref="DisposeSearch"/>) 한다.
+        /// </summary>
         private void OpenSearchWindow(NodeCreationContext context)
         {
-            if (_searchProvider == null || _graph == null)
+            if (_graph == null || _searchOwner == null)
             {
                 return;
+            }
+
+            if (_searchProvider == null)
+            {
+                _searchProvider = MotionNodeSearchProvider.Create(this, _searchOwner);
             }
 
             SearchWindow.Open(new SearchWindowContext(context.screenMousePosition), _searchProvider);
         }
 
-        private void OnDetachedFromPanel(DetachFromPanelEvent evt)
+        /// <summary>
+        /// 검색 제공자를 파괴한다. 창이 사라질 때 창이 부른다.
+        ///
+        /// <c>ScriptableObject</c>라 아무도 지우지 않으면 도메인 리로드까지 남는다.
+        /// </summary>
+        public void DisposeSearch()
         {
             if (_searchProvider != null)
             {
                 UnityEngine.Object.DestroyImmediate(_searchProvider);
                 _searchProvider = null;
             }
+
+            _searchOwner = null;
+            nodeCreationRequest = null;
         }
 
         /// <summary>
@@ -463,6 +485,9 @@ namespace Juahn.UiMotion.Editor
                     var to = edge.input == null ? null : edge.input.node as MotionNodeView;
                     if (from != null && to != null)
                     {
+                        // Unlink가 false면 그 링크는 이미 없다 — 같은 변경에서 부모 노드가
+                        // 먼저 지워졌거나(RemoveNode가 닿는 간선을 함께 정리한다) 화면에만
+                        // 남아 있던 중복 간선이다. 어느 쪽이든 지울 것이 없으므로 넘어간다.
                         _graph.Unlink(from.Id, to.Id);
                     }
 
@@ -479,6 +504,18 @@ namespace Juahn.UiMotion.Editor
             }
         }
 
+        /// <summary>
+        /// 새로 그어진 간선을 에셋에 반영한다.
+        ///
+        /// <b>에셋에 들어가지 못한 간선은 목록에서 뺀다.</b> 두 포트가 모두
+        /// <c>Capacity.Multi</c>라 같은 부모에서 같은 자식으로 두 번 끌 수 있는데, 저장 구조는
+        /// 같은 간선을 한 번만 담으므로 <c>Link</c>가 <c>false</c>를 돌려준다. 그것을 무시하면
+        /// 에셋에는 링크 1개, 화면에는 간선 2개가 되고, 둘 중 하나를 지우는 순간
+        /// 유일한 링크가 사라져 자식이 통째로 끊긴다.
+        ///
+        /// <c>graphViewChanged</c>가 돌려주는 <c>change</c>에서 빼면 GraphView가 그 Edge를
+        /// 만들지 않는다. 뒤에서 앞으로 지워야 인덱스가 밀리지 않는다.
+        /// </summary>
         private void ApplyNewEdges(List<Edge> created)
         {
             if (created == null)
@@ -486,14 +523,15 @@ namespace Juahn.UiMotion.Editor
                 return;
             }
 
-            for (int i = 0; i < created.Count; i++)
+            for (int i = created.Count - 1; i >= 0; i--)
             {
-                var from = created[i].output == null ? null : created[i].output.node as MotionNodeView;
-                var to = created[i].input == null ? null : created[i].input.node as MotionNodeView;
+                Edge edge = created[i];
+                var from = edge == null || edge.output == null ? null : edge.output.node as MotionNodeView;
+                var to = edge == null || edge.input == null ? null : edge.input.node as MotionNodeView;
 
-                if (from != null && to != null)
+                if (from == null || to == null || !_graph.Link(from.Id, to.Id))
                 {
-                    _graph.Link(from.Id, to.Id);
+                    created.RemoveAt(i);
                 }
             }
         }

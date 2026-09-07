@@ -169,3 +169,30 @@ Node Doctor.
   사라지지 않았는지는 CI가 지킨다
 - 런타임 패키지 README에 저작 툴 패키지 안내를 넣고, 스펙의 열린 질문 3번을 닫았다
   (그 저장소의 커밋)
+
+### 고침
+
+적대적 코드 리뷰에서 나온 데이터 손실 경로.
+
+- **중복 간선이 연결을 통째로 지우던 것.** 두 포트가 모두 `Port.Capacity.Multi`라 A에서 B로
+  두 번 끌 수 있는데, `MotionGraph.Link`는 중복이라 `false`를 돌려주는 반면 `ApplyNewEdges`는
+  그 반환값을 버렸다. 에셋에는 링크 1개, 화면에는 간선 2개가 되고 둘 중 하나를 지우면
+  유일한 링크가 사라져 저장하고 다시 열었을 때 그 자식이 통째로 없어졌다. 이제
+  `Link`가 실패한 간선을 `graphViewChanged`가 돌려주는 `change.edgesToCreate`에서 빼
+  GraphView가 그 Edge를 아예 만들지 않게 한다
+- **창을 도킹하면 노드 검색이 영구히 죽던 것.** `DetachFromPanelEvent`는 창을 닫을 때만이
+  아니라 도킹 · 언도킹 · Shift+Space 최대화 · 레이아웃 변경 때도 온다. 그때 검색 제공자를
+  파괴해 버려 이후 스페이스와 우클릭이 도메인 리로드까지 조용히 아무 일도 하지 않았다.
+  이제 제공자는 `OpenSearchWindow`가 필요할 때 만들고, 파괴는 창의 `OnDisable`에서 한다
+- **예시 생성기가 아무것도 못 만들고 성공을 보고하던 것.** 패키지가 `Library/PackageCache`에
+  있으면 폴더 생성과 에셋 생성이 조용히 실패하는데 개수는 그대로 올랐다. 이제
+  `AssetDatabase.IsValidFolder`로 폴더를, `LoadAssetAtPath`로 에셋 하나하나를 확인하고,
+  실패하면 읽기 전용 위치라는 것과 패키지를 임베드해야 한다는 것을 오류로 알린다
+- **결손 노드를 고칠 방법이 없던 것.** 타입이 사라진 노드는 배열에 `null`로 남는데 `NodeIds`가
+  그것을 건너뛰므로 그래프 창에 뷰가 생기지 않는다. 검사기는 그 때문에 생긴 끊어진 간선을
+  오류로 보고하지만 화면에는 지울 것이 없었다. `MotionGraphInspector`에 **"결손 노드 정리"**
+  버튼을 넣어 `MotionGraph.RemoveMissingNodes()`를 부른다.
+  `MotionNodeInspector`의 도달 불가 분기에는 왜 닿지 않는지와 실제 정리 자리를 남겼다
+- **검사 결과가 조용히 낡던 것.** 캐시가 그래프 **참조**로만 걸려 있어 그래프 창에서 노드를
+  고쳐도 인스펙터의 "오류 N · 경고 M"이 옛 값 그대로였다. 캐시 키에
+  `EditorUtility.GetDirtyCount(graph)`를 더하고 `Undo.undoRedoPerformed`에서도 무효화한다

@@ -34,9 +34,15 @@ namespace Juahn.UiMotion.Editor
         private bool _issuesValid;
         private double _lastValidateTime = double.NegativeInfinity;
 
+        /// <summary>검사 결과를 만들 때의 <c>GetDirtyCount</c>. 그래프가 밖에서 바뀐 것을 알아채는 끈이다.</summary>
+        private int _issuesDirtyCount;
+
         private bool _showTriggers = true;
         private bool _showSlots = true;
         private bool _showIssues = true;
+
+        /// <summary>"결손 노드 정리" 버튼이 눌렸다. 그리기가 끝난 뒤에 처리한다.</summary>
+        private bool _pendingCleanMissing;
 
         private void OnEnable()
         {
@@ -45,6 +51,21 @@ namespace Juahn.UiMotion.Editor
             // 요구사항: 선택할 때는 반드시 한 번 검사한다.
             _issuesValid = false;
             _lastValidateTime = double.NegativeInfinity;
+
+            Undo.undoRedoPerformed += OnUndoRedo;
+        }
+
+        private void OnDisable()
+        {
+            Undo.undoRedoPerformed -= OnUndoRedo;
+        }
+
+        /// <summary>되돌리기는 노드와 간선을 통째로 바꾼다. 검사 결과가 그대로면 거짓말이 된다.</summary>
+        private void OnUndoRedo()
+        {
+            _issuesValid = false;
+            _lastValidateTime = double.NegativeInfinity;
+            Repaint();
         }
 
         public override void OnInspectorGUI()
@@ -87,10 +108,22 @@ namespace Juahn.UiMotion.Editor
                 // 인스펙터만 다시 그려지는 경우와 구분할 방법이 없으므로 안전한 쪽으로 둔다.
                 _issuesValid = false;
             }
+
+            // 노드 배열을 직접 건드리므로 그리는 도중에 하면 안 된다 —
+            // Layout 패스와 Repaint 패스의 컨트롤 개수가 달라져 IMGUI가 예외를 던진다.
+            ApplyPendingCleanMissing(graph);
         }
 
         // --- 그리기 --------------------------------------------------------
 
+        /// <summary>
+        /// 요약과 결손 노드 경고를 그린다.
+        ///
+        /// <b>결손 노드를 고칠 수 있는 유일한 자리다.</b> 타입이 사라진 노드는 배열에
+        /// <c>null</c>로 남는데 <c>NodeIds</c>가 그것을 건너뛰므로 그래프 창에는 뷰조차 생기지
+        /// 않는다. 검사기는 그 때문에 생긴 끊어진 간선을 오류로 보고하지만 화면에는 지울 것이
+        /// 없다 — 여기서 정리하지 못하면 고칠 방법이 아예 없다.
+        /// </summary>
         private void DrawSummary(MotionGraph graph)
         {
             int missing = CountMissingNodes(graph);
@@ -103,12 +136,61 @@ namespace Juahn.UiMotion.Editor
 
             EditorGUILayout.LabelField(summary, EditorStyles.boldLabel);
 
-            if (missing > 0)
+            if (missing == 0)
             {
-                EditorGUILayout.HelpBox(
-                    "타입이 사라진 노드 " + missing + "개가 있습니다. 그 노드는 실행 시 건너뛰어집니다.",
-                    MessageType.Error);
+                return;
             }
+
+            EditorGUILayout.HelpBox(
+                "타입이 사라진 노드 " + missing + "개가 있습니다. 그 노드는 실행 시 건너뛰어지고, " +
+                "그래프 창에도 나타나지 않습니다. 그것을 가리키던 간선과 트리거 진입점은 " +
+                "검사 결과에 오류로 남습니다.",
+                MessageType.Error);
+
+            if (GUILayout.Button(new GUIContent(
+                    "결손 노드 정리",
+                    "배열에 null로 남은 노드를 지운다. 그것을 가리키던 간선과 트리거는 검사 결과에서 확인하고 따로 고쳐야 한다.")))
+            {
+                _pendingCleanMissing = true;
+            }
+        }
+
+        /// <summary>
+        /// 눌러 둔 "결손 노드 정리"를 실제로 수행한다.
+        ///
+        /// <c>_nodes</c>는 <c>[SerializeReference]</c> 배열이라 원소 삭제가 구조 변경이다.
+        /// <c>RecordObject</c>의 차분 방식으로는 되돌려지지 않으므로 그래프 창과 같이
+        /// <c>RegisterCompleteObjectUndo</c>를 쓴다.
+        /// </summary>
+        private void ApplyPendingCleanMissing(MotionGraph graph)
+        {
+            if (!_pendingCleanMissing)
+            {
+                return;
+            }
+
+            _pendingCleanMissing = false;
+
+            Undo.RegisterCompleteObjectUndo(graph, "UI Motion 결손 노드 정리");
+
+            int removed = graph.RemoveMissingNodes();
+            if (removed == 0)
+            {
+                Debug.Log("[UI Motion] 지울 결손 노드가 없었습니다.");
+                return;
+            }
+
+            EditorUtility.SetDirty(graph);
+
+            // 필드를 직접 바꿨으므로 다시 읽는다. 안 하면 SerializedObject가 옛 값을 되돌려 놓는다.
+            serializedObject.Update();
+
+            _issuesValid = false;
+            _lastValidateTime = double.NegativeInfinity;
+            Repaint();
+
+            Debug.Log("[UI Motion] 결손 노드 " + removed + "개를 지웠습니다. " +
+                "그것을 가리키던 간선과 트리거 진입점은 검사 결과에서 확인하세요.");
         }
 
         private void DrawTimeMode()
@@ -244,10 +326,17 @@ namespace Juahn.UiMotion.Editor
         /// 무효 표시가 서 있어도 <see cref="MinValidateInterval"/> 안에는 다시 돌리지 않는다 —
         /// 값을 드래그하는 동안 무효 표시가 매 프레임 서기 때문이다. 그때는 직전 결과를 그대로
         /// 그리고 다시 그리기를 예약해, 손을 뗀 뒤 늦어도 0.25초 안에 최신 결과가 나오게 한다.
+        ///
+        /// <b><c>GetDirtyCount</c>를 같이 본다.</b> 그래프 창에서 노드를 고쳐도 이 인스펙터는
+        /// 그것을 알 방법이 없다 — 참조도 그대로고 <c>SerializedObject</c>도 건드려지지 않는다.
+        /// 그러면 "오류 N · 경고 M"이 조용히 낡는다. 더티 카운트는 에셋이 바뀔 때마다 오르므로
+        /// 참조가 같아도 변경을 알아챈다.
         /// </summary>
         private void EnsureIssues(MotionGraph graph)
         {
-            if (_issuesValid)
+            int dirtyCount = EditorUtility.GetDirtyCount(graph);
+
+            if (_issuesValid && _issuesDirtyCount == dirtyCount)
             {
                 return;
             }
@@ -262,6 +351,7 @@ namespace Juahn.UiMotion.Editor
             _issues.Clear();
             MotionGraphValidator.Validate(graph, _issues);
             _lastValidateTime = now;
+            _issuesDirtyCount = dirtyCount;
             _issuesValid = true;
         }
 

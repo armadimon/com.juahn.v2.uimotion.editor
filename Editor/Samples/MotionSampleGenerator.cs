@@ -16,6 +16,11 @@ namespace Juahn.UiMotion.Editor
     /// </summary>
     public static class MotionSampleGenerator
     {
+        /// <summary>읽기 전용 위치라 아무것도 만들 수 없을 때 사람에게 할 일을 알려 준다.</summary>
+        private const string ReadOnlyHint =
+            "패키지가 읽기 전용 위치(Library/PackageCache)에 있으면 예시를 만들 수 없습니다. " +
+            "패키지 폴더를 Packages/ 아래로 복사해 임베드한 뒤 다시 시도하세요.";
+
         [MenuItem(MotionEditorPaths.MenuRoot + "Generate Missing Samples")]
         public static void GenerateMissing()
         {
@@ -39,7 +44,17 @@ namespace Juahn.UiMotion.Editor
 
             EnsureFolder(folder);
 
+            // 폴더 생성은 조용히 실패한다. 읽기 전용 위치(Library/PackageCache)에서는
+            // CreateFolder도 CreateAsset도 예외를 던지지 않고 아무것도 하지 않으므로,
+            // 여기서 확인하지 않으면 "13개를 만들었습니다"만 찍히고 실제로는 아무것도 없다.
+            if (!AssetDatabase.IsValidFolder(folder))
+            {
+                Debug.LogError("[UI Motion] 예시 폴더를 만들지 못했습니다: " + folder + "\n" + ReadOnlyHint);
+                return 0;
+            }
+
             int made = 0;
+            int failed = 0;
             IReadOnlyList<MotionNodeEntry> entries = MotionNodeCatalog.All;
 
             for (int i = 0; i < entries.Count; i++)
@@ -76,10 +91,26 @@ namespace Juahn.UiMotion.Editor
                     folder + "/" + entry.Sample + "." + MotionEditorPaths.GraphAssetExtension);
 
                 AssetDatabase.CreateAsset(graph, path);
+
+                // 정말로 에셋이 생겼을 때만 센다. CreateAsset은 실패해도 아무 말이 없다.
+                if (AssetDatabase.LoadAssetAtPath<MotionGraph>(path) == null)
+                {
+                    // 에셋이 되지 못한 인스턴스는 메모리에 떠 있게 된다. 직접 지운다.
+                    UnityEngine.Object.DestroyImmediate(graph);
+                    failed++;
+                    continue;
+                }
+
                 made++;
             }
 
             AssetDatabase.SaveAssets();
+
+            if (failed > 0)
+            {
+                Debug.LogError("[UI Motion] 예시 " + failed + "개를 만들지 못했습니다.\n" + ReadOnlyHint);
+            }
+
             return made;
         }
 
