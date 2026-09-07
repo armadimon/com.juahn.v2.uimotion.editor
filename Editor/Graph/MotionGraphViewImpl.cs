@@ -286,10 +286,16 @@ namespace Juahn.UiMotion.Editor
                 return false;
             }
 
+            // Undo는 바꾸기 전에 기록해야 하므로 MoveLink보다 앞에 둘 수밖에 없다.
+            // 그런데 MoveLink가 실패하면 아무것도 바뀌지 않은 채 되돌리기 항목만 남아,
+            // Ctrl+Z를 한 번 눌러도 겉보기에 아무 일도 일어나지 않는다.
+            // 그래서 실패하면 방금 연 그룹을 되돌린다.
+            int undoGroup = Undo.GetCurrentGroup();
             Undo.RegisterCompleteObjectUndo(_graph, "Reorder Motion Links");
 
             if (!_graph.MoveLink(globalFrom, globalTo))
             {
+                Undo.RevertAllDownToGroup(undoGroup);
                 return false;
             }
 

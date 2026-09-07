@@ -48,9 +48,19 @@ namespace Juahn.UiMotion.Editor
         [MenuItem(MotionEditorPaths.MenuRoot + MotionEditorPaths.DoctorWindowTitle)]
         public static void Open()
         {
+            // 창이 새로 만들어지면 OnEnable이 이미 검사를 돌린다. 그때 또 부르면
+            // 노드마다 AssetDatabase.FindAssets를 도는 검사를 여는 것만으로 두 번 한다.
+            bool existed = HasOpenInstances<MotionNodeDoctorWindow>();
+
             var window = GetWindow<MotionNodeDoctorWindow>(false, MotionEditorPaths.DoctorWindowTitle, true);
             window.minSize = new Vector2(620f, 260f);
-            window.Rebuild();
+
+            if (existed)
+            {
+                // 이미 떠 있던 창은 메뉴로 다시 부른 것을 "새로 보고 싶다"로 읽는다.
+                window._pendingRebuild = true;
+            }
+
             window.Show();
         }
 

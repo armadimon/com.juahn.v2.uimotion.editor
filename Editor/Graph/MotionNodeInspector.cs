@@ -35,6 +35,12 @@ namespace Juahn.UiMotion.Editor
 
         private string _newSlotName = string.Empty;
 
+        /// <summary>이번 패스에서 <see cref="SlotRef"/>의 이름이 바뀌었는가.</summary>
+        private bool _slotFieldChanged;
+
+        /// <summary>값이 바뀐 뒤 아직 검사를 다시 돌리지 않았는가.</summary>
+        private bool _issuesStale;
+
         public MotionNodeInspector(MotionGraphViewImpl view)
         {
             _view = view;
@@ -101,6 +107,8 @@ namespace Juahn.UiMotion.Editor
             DrawHeader(model, id);
 
             SerializedProperty node = FindNodeProperty(_serialized, id);
+            _slotFieldChanged = false;
+
             if (node == null)
             {
                 EditorGUILayout.HelpBox(
@@ -114,14 +122,50 @@ namespace Juahn.UiMotion.Editor
 
             if (_serialized.ApplyModifiedProperties())
             {
-                // 슬롯 목록은 노드의 SlotRef 필드에서 계산되는 파생값이다.
-                // 값이 바뀌었으면 다시 계산해야 드롭다운과 인스펙터가 맞는다.
-                graph.Invalidate();
-                _view.RefreshIssues();
+                // 파생 인덱스를 버리는 것은 SlotRef가 바뀌었을 때만이다. 인덱스가 캐시하는
+                // 것은 id->노드 · 자식 목록 · 트리거 · 슬롯 목록뿐이고, 그중 노드 필드로
+                // 바뀌는 것은 SlotRef의 이름 하나뿐이다. 슬라이더를 끄는 동안
+                // ApplyModifiedProperties는 매 이벤트 true를 돌려주므로, 여기서 무조건
+                // 버리면 드래그 한 번에 그래프 전체 인덱스를 수십 번 다시 만든다.
+                if (_slotFieldChanged)
+                {
+                    graph.Invalidate();
+                }
+
+                _issuesStale = true;
             }
+
+            // 검사는 파라미터에도 영향을 받는다 — RepeatNode.Count가 음수면 "무한 반복"으로
+            // 읽히고, SubGraph의 참조는 순환 검사에 들어간다. 그래서 건너뛸 수는 없고,
+            // 대신 손을 뗄 때까지 미룬다. 드래그 중에는 hotControl이 0이 아니다.
+            RefreshIssuesWhenSettled();
 
             EditorGUILayout.Space();
             DrawChildOrder(graph, id);
+        }
+
+        /// <summary>
+        /// 값이 바뀌었으면 검사를 다시 돌린다. 단 드래그가 끝난 뒤에만.
+        ///
+        /// <see cref="MotionGraphValidator.Validate"/>는 순환과 도달성까지 보느라 그래프
+        /// 전체를 훑는다. 슬라이더를 끄는 동안 매 이벤트 돌리면 큰 그래프에서 눈에 띄게 끊긴다.
+        /// </summary>
+        private void RefreshIssuesWhenSettled()
+        {
+            if (!_issuesStale)
+            {
+                return;
+            }
+
+            if (GUIUtility.hotControl != 0)
+            {
+                // 아직 끌고 있다. 손을 뗀 뒤 한 번 더 그려야 여기 다시 온다.
+                _body.MarkDirtyRepaint();
+                return;
+            }
+
+            _issuesStale = false;
+            _view.RefreshIssues();
         }
 
         private static void DrawHeader(MotionNodeBase model, NodeId id)
@@ -238,7 +282,14 @@ namespace Juahn.UiMotion.Editor
             SerializedProperty nameProperty = slot.FindPropertyRelative("Name");
             if (nameProperty == null)
             {
+                // 구조를 모르므로 무엇이 바뀌었는지도 알 수 없다. 슬롯이 바뀐 것으로 친다.
+                EditorGUI.BeginChangeCheck();
                 EditorGUILayout.PropertyField(slot, label, true);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    _slotFieldChanged = true;
+                }
+
                 return;
             }
 
@@ -266,6 +317,7 @@ namespace Juahn.UiMotion.Editor
                 else
                 {
                     nameProperty.stringValue = chosen == EmptySlotLabel ? string.Empty : chosen;
+                    _slotFieldChanged = true;
                 }
             }
 
@@ -286,6 +338,7 @@ namespace Juahn.UiMotion.Editor
                     if (GUILayout.Button("확인", GUILayout.Width(48f)))
                     {
                         nameProperty.stringValue = _newSlotName.Trim();
+                        _slotFieldChanged = true;
                         _newSlotPath = string.Empty;
                         _newSlotName = string.Empty;
                     }

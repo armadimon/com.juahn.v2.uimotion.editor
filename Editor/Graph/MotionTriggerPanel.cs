@@ -230,6 +230,10 @@ namespace Juahn.UiMotion.Editor
                     {
                         SetEntry(graph, _newTriggerName.Trim(), _view.SelectedNode, TriggerPolicy.Restart);
                         _newTriggerName = string.Empty;
+
+                        // 포커스를 놓지 않으면 TextField가 자기가 들고 있던 문자열을
+                        // 다시 그려, 비운 것이 화면에 반영되지 않는다.
+                        GUI.FocusControl(null);
                     }
                 }
             }

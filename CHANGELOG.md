@@ -214,3 +214,21 @@ Node Doctor.
 - **프리팹 오버라이드 적용이 프리뷰 중간값을 굽던 것.** `sceneSaving`과 `prefabSaving`만
   걸려 있어 `Apply All Overrides` 경로가 무방비였다. `PrefabUtility.prefabInstanceApplying`에도
   `StopAll`을 건다
+
+쓸데없이 도는 일과 남는 자국.
+
+- **슬라이더를 끄는 동안 그래프 전체를 다시 검사하던 것.** `ApplyModifiedProperties`는 드래그
+  중 매 이벤트 `true`를 돌려주는데 그때마다 `Invalidate()`와 `Validate()`가 그래프 전체를
+  훑었다(순환·도달성 포함). 파생 인덱스를 버리는 것은 **`SlotRef`가 바뀌었을 때만**으로 좁혔다 —
+  인덱스가 캐시하는 것 중 노드 필드로 바뀌는 것은 그것뿐이다. 검사는 파라미터에도 영향을
+  받으므로(`RepeatNode.Count`가 음수면 "무한 반복", `SubGraph`의 참조는 순환 검사에 들어간다)
+  건너뛰지 않고 **손을 뗄 때까지 미룬다**
+- 팔레트가 항목을 고를 때마다 `MotionNodeDoctor.FindSample`을 두 번 부르던 것.
+  설명과 "예시 열기" 버튼이 각각 불러 클릭 한 번에 프로젝트를 두 번 훑었다. 한 번만 부른다
+- `MotionGraphViewImpl.MoveChild`가 `MoveLink` 실패에도 되돌리기 항목을 남기던 것.
+  실패하면 `Undo.RevertAllDownToGroup`으로 방금 연 그룹을 되돌린다 —
+  아무것도 바뀌지 않았는데 Ctrl+Z가 한 번 헛도는 것을 막는다
+- 트리거를 추가해도 `TextField`가 비워지지 않던 것. 포커스를 놓지 않으면 컨트롤이 자기가
+  들고 있던 문자열을 다시 그린다. `GUI.FocusControl(null)`을 부른다
+- `MotionNodeDoctorWindow.Open`이 검사를 두 번 돌던 것. 창이 새로 만들어지면 `OnEnable`이
+  이미 돌리므로, 이미 떠 있던 창을 메뉴로 다시 부른 경우에만 다시 검사한다

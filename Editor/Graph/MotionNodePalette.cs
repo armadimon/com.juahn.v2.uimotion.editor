@@ -260,27 +260,31 @@ namespace Juahn.UiMotion.Editor
                 ? "설명이 없습니다. [MotionNode]의 Summary를 채우세요."
                 : entry.Summary;
 
-            _detailSample.text = DescribeSample(entry);
+            // 예시는 한 번만 찾는다. FindSample은 프로젝트 전체를 뒤지므로
+            // 설명과 버튼 활성화가 각각 부르면 클릭 한 번에 두 번 훑게 된다.
+            int matches = 0;
+            string samplePath = string.IsNullOrWhiteSpace(entry.Sample)
+                ? null
+                : MotionNodeDoctor.FindSample(entry.Sample, out matches);
+
+            _detailSample.text = DescribeSample(entry, samplePath, matches);
 
             _addButton.SetEnabled(_view != null && _view.Graph != null);
-            _openSampleButton.SetEnabled(HasSample(entry));
+            _openSampleButton.SetEnabled(samplePath != null);
         }
 
         /// <summary>
         /// 예시 존재 여부를 사람이 읽을 문장으로 만든다.
-        /// <c>FindSample</c>은 프로젝트 전체를 뒤지므로 선택했을 때만 부른다.
+        /// 경로와 개수는 <see cref="Select"/>가 한 번 찾아 넘겨준다.
         /// </summary>
-        private static string DescribeSample(MotionNodeEntry entry)
+        private static string DescribeSample(MotionNodeEntry entry, string samplePath, int matches)
         {
             if (string.IsNullOrWhiteSpace(entry.Sample))
             {
                 return "예시 없음 — [MotionNode]의 Sample이 비어 있습니다.";
             }
 
-            int matches;
-            string path = MotionNodeDoctor.FindSample(entry.Sample, out matches);
-
-            if (path == null)
+            if (samplePath == null)
             {
                 return "예시 '" + entry.Sample + "'을(를) 찾지 못했습니다.";
             }
@@ -290,18 +294,7 @@ namespace Juahn.UiMotion.Editor
                 return "예시 '" + entry.Sample + "'이(가) " + matches + "개입니다. 어느 것이 쓰일지 알 수 없습니다.";
             }
 
-            return "예시: " + path;
-        }
-
-        private static bool HasSample(MotionNodeEntry entry)
-        {
-            if (string.IsNullOrWhiteSpace(entry.Sample))
-            {
-                return false;
-            }
-
-            int matches;
-            return MotionNodeDoctor.FindSample(entry.Sample, out matches) != null;
+            return "예시: " + samplePath;
         }
 
         private void AddSelectedToGraph()
