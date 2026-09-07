@@ -124,7 +124,7 @@ namespace Juahn.UiMotion.Editor
         private void ConnectChildren(NodeId parent)
         {
             MotionNodeView parentView;
-            if (!_views.TryGetValue(parent.Value, out parentView) || parentView.Output == null)
+            if (!_views.TryGetValue(parent.Value, out parentView))
             {
                 return;
             }
@@ -153,6 +153,17 @@ namespace Juahn.UiMotion.Editor
         {
             var compatible = new List<Port>();
 
+            // 끝나지 않는 노드에서는 새 간선을 뽑을 수 없다. 그 자식은 절대 실행되지 않는다.
+            // 포트는 살아 있으므로 이미 달린 간선은 여전히 보이고 지울 수 있다.
+            var startView = start.node as MotionNodeView;
+            if (start.direction == Direction.Output && startView != null && !startView.AcceptsChildren)
+            {
+                return compatible;
+            }
+
+            // 반대 방향에서 끌어올 때도 같은 노드를 부모로 삼을 수 없다.
+            bool wantsParent = start.direction == Direction.Input;
+
             ports.ForEach(delegate(Port candidate)
             {
                 if (candidate == start || candidate.node == start.node)
@@ -163,6 +174,15 @@ namespace Juahn.UiMotion.Editor
                 if (candidate.direction == start.direction)
                 {
                     return;
+                }
+
+                if (wantsParent)
+                {
+                    var candidateView = candidate.node as MotionNodeView;
+                    if (candidateView != null && !candidateView.AcceptsChildren)
+                    {
+                        return;
+                    }
                 }
 
                 compatible.Add(candidate);
@@ -186,7 +206,11 @@ namespace Juahn.UiMotion.Editor
                 return change;
             }
 
-            Undo.RecordObject(_graph, "Edit Motion Graph");
+            // RecordObject가 아니라 RegisterCompleteObjectUndo를 쓴다.
+            // _nodes는 [SerializeReference] 배열이라 노드 추가/삭제가 구조 변경이고,
+            // RecordObject의 차분 방식은 그것을 제대로 되돌리지 못한다 —
+            // 되돌리기를 눌러도 지운 노드가 살아 돌아오지 않는다.
+            Undo.RegisterCompleteObjectUndo(_graph, "Edit Motion Graph");
 
             ApplyMoves(change.movedElements);
             ApplyRemovals(change.elementsToRemove);
@@ -280,7 +304,7 @@ namespace Juahn.UiMotion.Editor
                 return null;
             }
 
-            Undo.RecordObject(_graph, "Add Motion Node");
+            Undo.RegisterCompleteObjectUndo(_graph, "Add Motion Node");
 
             NodeId id = _graph.AddNode(model);
             _graph.SetNodePosition(id, position);

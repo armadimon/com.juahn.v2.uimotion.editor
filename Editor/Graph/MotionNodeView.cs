@@ -23,11 +23,17 @@ namespace Juahn.UiMotion.Editor
         public Port Input;
 
         /// <summary>
-        /// 나가는 흐름. <c>BlocksChildren</c>인 노드는 <b>null이다</b> —
-        /// 끝나지 않는 노드에 자식을 달면 그 자식은 절대 실행되지 않으므로
-        /// 경고를 내는 것보다 배선 자체를 불가능하게 만드는 편이 낫다.
+        /// 나가는 흐름. <b>언제나 있다.</b>
+        ///
+        /// 끝나지 않는 노드(<see cref="MotionNodeBase.BlocksChildren"/>)에는 자식을 달 수
+        /// 없지만, 그렇다고 포트를 없애면 <b>이미 그렇게 배선된 그래프를 고칠 수 없게 된다</b> —
+        /// 간선이 화면에 그려지지 않아 지울 수도 없는데 에셋에는 남아 계속 경고가 뜬다.
+        /// 그래서 포트는 두고 새 연결만 막는다(<c>GetCompatiblePorts</c>).
         /// </summary>
         public Port Output;
+
+        /// <summary>이 노드에서 새 간선을 뽑을 수 있는가.</summary>
+        public bool AcceptsChildren { get; private set; }
 
         private readonly Label _issueBadge;
 
@@ -45,12 +51,18 @@ namespace Juahn.UiMotion.Editor
             Input.portName = string.Empty;
             inputContainer.Add(Input);
 
-            // 흐름을 막는 노드는 출력 포트를 아예 만들지 않는다.
-            if (model == null || !model.BlocksChildren)
+            AcceptsChildren = model == null || !model.BlocksChildren;
+
+            Output = InstantiatePort(Orientation.Horizontal, Direction.Output, Port.Capacity.Multi, typeof(MotionNodeBase));
+            Output.portName = string.Empty;
+            outputContainer.Add(Output);
+
+            if (!AcceptsChildren)
             {
-                Output = InstantiatePort(Orientation.Horizontal, Direction.Output, Port.Capacity.Multi, typeof(MotionNodeBase));
-                Output.portName = string.Empty;
-                outputContainer.Add(Output);
+                // 이미 달린 간선은 보이고 지울 수 있어야 하므로 포트 자체는 살려 둔다.
+                // 새로 뽑는 것만 막고, 그 사실이 눈에 보이게 흐리게 표시한다.
+                Output.tooltip = "이 노드는 끝나지 않으므로 자식이 실행되지 않습니다";
+                Output.style.opacity = 0.35f;
             }
 
             // 미검증 노드는 팔레트에서만 격리하면 이미 그래프에 들어간 것을 알 수 없다.
