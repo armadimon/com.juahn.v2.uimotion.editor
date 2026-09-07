@@ -23,6 +23,16 @@ namespace Juahn.UiMotion.Editor
         private static readonly List<MotionPlayer> Players = new List<MotionPlayer>();
         private static double _lastTime;
 
+        /// <summary>
+        /// <see cref="Tick"/>이 지금 <c>EditorApplication.update</c>에 걸려 있는가.
+        ///
+        /// 목록의 개수로 판단하면 안 된다. 같은 플레이어를 다시 발사하면 목록은 그대로
+        /// 1인데 구독이 또 붙고, <c>-=</c>는 한 번에 하나만 뗀다. 그러면 에디터가 살아
+        /// 있는 내내 <see cref="Tick"/>이 프레임마다 여러 번 돌면서 연출이 배속으로
+        /// 흐르고 <c>SceneView.RepaintAll</c>이 그 횟수만큼 불린다.
+        /// </summary>
+        private static bool _ticking;
+
         static MotionPreviewDriver()
         {
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
@@ -111,11 +121,7 @@ namespace Juahn.UiMotion.Editor
                 Players.Add(player);
             }
 
-            if (Players.Count == 1)
-            {
-                _lastTime = EditorApplication.timeSinceStartup;
-                EditorApplication.update += Tick;
-            }
+            StartTicking();
 
             player.Fire(trigger);
         }
@@ -162,7 +168,7 @@ namespace Juahn.UiMotion.Editor
 
             if (Players.Count == 0)
             {
-                EditorApplication.update -= Tick;
+                StopTicking();
             }
         }
 
@@ -178,6 +184,30 @@ namespace Juahn.UiMotion.Editor
             }
 
             Players.Clear();
+            StopTicking();
+        }
+
+        /// <summary>이미 걸려 있으면 아무것도 하지 않는다.</summary>
+        private static void StartTicking()
+        {
+            if (_ticking)
+            {
+                return;
+            }
+
+            _ticking = true;
+            _lastTime = EditorApplication.timeSinceStartup;
+            EditorApplication.update += Tick;
+        }
+
+        private static void StopTicking()
+        {
+            if (!_ticking)
+            {
+                return;
+            }
+
+            _ticking = false;
             EditorApplication.update -= Tick;
         }
 
@@ -210,7 +240,7 @@ namespace Juahn.UiMotion.Editor
 
             if (Players.Count == 0)
             {
-                EditorApplication.update -= Tick;
+                StopTicking();
                 return;
             }
 
