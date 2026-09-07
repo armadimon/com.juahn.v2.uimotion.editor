@@ -21,6 +21,8 @@ namespace Juahn.UiMotion.Editor
 
         private MotionGraphViewImpl _view;
         private MotionNodePalette _palette;
+        private MotionNodeInspector _nodeInspector;
+        private MotionTriggerPanel _triggerPanel;
         private Label _titleLabel;
         private Label _summaryLabel;
 
@@ -94,9 +96,14 @@ namespace Juahn.UiMotion.Editor
             _palette = new MotionNodePalette(_view);
             row.Add(_palette);
             row.Add(_view);
+            row.Add(BuildSidePanel());
 
             // 스페이스와 우클릭의 노드 검색 창. 창이 있어야 좌표를 바꿀 수 있다.
             _view.SetupSearch(this);
+
+            // 선택이 바뀌면 오른쪽 패널이 따라와야 한다. GraphView는 선택 변경 이벤트를
+            // 주지 않으므로 뷰가 ISelection 구현을 가로채 이 이벤트를 낸다.
+            _view.SelectionChanged += OnGraphSelectionChanged;
 
             // OnEnable은 CreateGUI보다 먼저 불리므로 복원은 여기서 한다.
             Bind(ResolveStoredGraph());
@@ -115,6 +122,7 @@ namespace Juahn.UiMotion.Editor
 
             _view.Load(graph);
             RefreshHeader();
+            OnGraphSelectionChanged();
         }
 
         /// <summary>
@@ -160,6 +168,39 @@ namespace Juahn.UiMotion.Editor
             bar.Add(_summaryLabel);
 
             return bar;
+        }
+
+        /// <summary>오른쪽 패널 — 노드 파라미터 위, 트리거 선언 아래.</summary>
+        private VisualElement BuildSidePanel()
+        {
+            var side = new ScrollView(ScrollViewMode.Vertical);
+
+            side.style.width = 300f;
+            side.style.minWidth = 220f;
+            side.style.flexShrink = 0f;
+            side.style.borderLeftWidth = 1f;
+            side.style.borderLeftColor = new Color(0f, 0f, 0f, 0.35f);
+
+            _nodeInspector = new MotionNodeInspector(_view);
+            _triggerPanel = new MotionTriggerPanel(_view);
+
+            side.Add(_nodeInspector);
+            side.Add(_triggerPanel);
+
+            return side;
+        }
+
+        private void OnGraphSelectionChanged()
+        {
+            if (_nodeInspector != null)
+            {
+                _nodeInspector.Refresh();
+            }
+
+            if (_triggerPanel != null)
+            {
+                _triggerPanel.Refresh();
+            }
         }
 
         private void SaveGraph()

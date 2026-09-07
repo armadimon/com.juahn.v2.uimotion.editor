@@ -122,3 +122,24 @@ Node Doctor.
 - `MotionGraphViewImpl.MoveChild(parent, from, to)` — 화면에서 보이는 자식 순서를 받아
   전역 간선 배열의 인덱스로 바꾼 뒤 `MotionGraph.MoveLink`를 부른다. 되돌리기를 거친다
 - `MotionGraphInspector`에 "그래프 창에서 열기" 버튼
+
+그래프 창 — 노드 인스펙터와 트리거 편집.
+
+- `MotionNodeInspector` — 고른 노드의 파라미터를 그린다. **리플렉션이 아니라
+  `SerializedProperty`로 그린다** — 그래야 되돌리기와 프리팹 오버라이드가 따라온다.
+  `_nodes` 배열에서 원소를 찾을 때 배열 인덱스가 아니라 `Id.Value`를 비교한다.
+  id는 재사용되지 않고 배열은 지운 자리를 메우므로 둘이 어긋난다
+- `[MotionParam]`의 `Label`·`Tooltip`을 쓰고, `Min`/`Max`가 선언된 숫자는 슬라이더로 그린다.
+  `Id` 필드는 감춘다 — 고치면 간선과 트리거가 통째로 끊긴다
+- **`SlotRef`는 텍스트 입력이 아니라 드롭다운이다.** 이 그래프가 이미 쓰는 슬롯 이름 +
+  `Self` + "새 슬롯...". 오타 하나가 아무 경고 없이 동작하지 않는 연출을 만드는 것을 막는다
+- **자식 실행 순서를 위/아래로 옮긴다.** 화면에 보이는 순서를 전역 간선 배열의 인덱스로
+  바꿔 `MotionGraph.MoveLink`를 부른다
+- `MotionTriggerPanel` — 트리거 **선언**의 목록·추가·삭제, 재발사 정책, 진입 노드 지정.
+  진입 노드가 없는 트리거는 배경을 칠하고 오류로 말한다 — 쏘아도 아무 일이 없기 때문이다.
+  `Start`·`Loop`·`End`는 런타임이 그 철자로 쏘는 예약 이름이라 한 번 눌러 만드는 버튼을 따로 둔다
+- **`TriggerDeclaration`과 `TriggerNode`를 구분해 말한다.** 패널이 다루는 것은 선언이고,
+  팔레트의 `Trigger` 노드는 그래프 안에서 시작 지점을 눈에 보이게 하는 표식일 뿐이다.
+  표식만 놓고 선언을 만들지 않으면 그래프는 재생되지 않는다
+- `MotionGraphViewImpl`이 `ISelection` 구현을 가로채 `SelectionChanged`를 낸다.
+  GraphView는 선택 변경 이벤트를 주지 않는다

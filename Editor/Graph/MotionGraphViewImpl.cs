@@ -77,6 +77,88 @@ namespace Juahn.UiMotion.Editor
             }
         }
 
+        /// <summary>
+        /// 선택이 바뀌었다. 노드 인스펙터와 트리거 패널이 이것을 듣는다.
+        ///
+        /// GraphView는 선택 변경 이벤트를 주지 않으므로 <c>ISelection</c> 구현을 가로챈다.
+        /// </summary>
+        public event System.Action SelectionChanged;
+
+        public override void AddToSelection(ISelectable selectable)
+        {
+            base.AddToSelection(selectable);
+            RaiseSelectionChanged();
+        }
+
+        public override void RemoveFromSelection(ISelectable selectable)
+        {
+            base.RemoveFromSelection(selectable);
+            RaiseSelectionChanged();
+        }
+
+        public override void ClearSelection()
+        {
+            base.ClearSelection();
+            RaiseSelectionChanged();
+        }
+
+        private void RaiseSelectionChanged()
+        {
+            if (SelectionChanged != null)
+            {
+                SelectionChanged();
+            }
+        }
+
+        /// <summary>선택된 노드 하나. 없거나 둘 이상이면 <see cref="NodeId.None"/>.</summary>
+        public NodeId SelectedNode
+        {
+            get
+            {
+                NodeId found = NodeId.None;
+
+                for (int i = 0; i < selection.Count; i++)
+                {
+                    var view = selection[i] as MotionNodeView;
+                    if (view == null)
+                    {
+                        continue;
+                    }
+
+                    if (found.IsValid)
+                    {
+                        // 둘 이상이면 무엇을 그릴지 정할 수 없다.
+                        return NodeId.None;
+                    }
+
+                    found = view.Id;
+                }
+
+                return found;
+            }
+        }
+
+        /// <summary>id로 뷰를 찾는다. 없으면 null.</summary>
+        public MotionNodeView FindView(NodeId id)
+        {
+            MotionNodeView view;
+            return _views.TryGetValue(id.Value, out view) ? view : null;
+        }
+
+        /// <summary>노드 하나를 골라 화면에 띄운다. 트리거 패널의 "진입 노드 보기"가 쓴다.</summary>
+        public void FocusNode(NodeId id)
+        {
+            MotionNodeView view = FindView(id);
+            if (view == null)
+            {
+                return;
+            }
+
+            ClearSelection();
+            AddToSelection(view);
+            FrameSelection();
+        }
+
         /// <summary>에셋을 읽어 뷰를 처음부터 다시 만든다.</summary>
         public void Load(MotionGraph graph)
         {
@@ -114,6 +196,9 @@ namespace Juahn.UiMotion.Editor
             {
                 _loading = false;
             }
+
+            // 뷰를 통째로 다시 만들었으므로 선택도 사라졌다. 듣는 쪽이 그것을 알아야 한다.
+            RaiseSelectionChanged();
         }
 
         /// <summary>
