@@ -2,6 +2,15 @@
 
 ## [0.1.0] - 미출시
 
+### 더함 — 프리셋 그래프 생성기
+
+- `Window > UI Motion > Generate Preset Graphs` — IdlePaori에서 검증된 연출 넷을 만든다.
+  `ButtonBounce` · `SlotPopReveal` · `SlotAccentSlam_Tier2` · `SlotAccentSlam_Tier3`
+- 예시(`Generate Missing Samples`)는 노드 하나가 무엇을 하는지 보여 주고, 프리셋은 붙이면
+  그대로 쓰는 완성된 연출이다
+- 손으로 만든 `.asset` 대신 코드가 만든다. 수치가 상수로 이름과 함께 서 있어야 어떤 값이
+  왜 그 값인지 읽을 수 있다
+
 ### 추가
 
 에디터 패키지 뼈대.
