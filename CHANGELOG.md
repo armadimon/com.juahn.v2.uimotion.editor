@@ -49,8 +49,9 @@ Node Doctor.
   `Sample`이 가리키는 예시 그래프가 실제로 존재하는지 · 같은 이름의 예시가 둘 이상은 아닌지 ·
   `[Serializable]` 유무. 예시는 정해진 경로가 아니라 **이름으로 프로젝트 전체를 검색한다** —
   프로젝트가 자기 노드를 추가하면 그 예시는 이 패키지 밖에 있기 때문이다
-- `MotionNodeDoctor.RunBatch` — 배치 모드 진입점이자 CI 게이트. 문제가 하나라도 있으면
-  `EditorApplication.Exit(1)`로 죽는다
+- `MotionNodeDoctor.RunBatch` — 배치 모드 진입점. 문제가 하나라도 있으면
+  `EditorApplication.Exit(1)`로 죽는다. Unity 라이선스가 필요해 이 저장소의 CI가 아니라
+  로컬 게이트다 — 컴파일 게이트와 같은 이유다
 
       Unity -batchmode -quit -projectPath <path> \
         -executeMethod Juahn.UiMotion.Editor.MotionNodeDoctor.RunBatch
@@ -96,9 +97,10 @@ Node Doctor.
   이동 · 삭제 · 배선이 전부 `Undo`를 거친다
 - `Load` 중에는 `graphViewChanged`를 무시한다(`_loading` 가드). 요소를 지우고 다시 만드는
   동안에도 콜백이 불리므로, 가드가 없으면 방금 읽은 것을 도로 지운다
-- `MotionNodeView` — 포트 타입은 흐름 하나뿐이다. **끝나지 않는 노드(`BlocksChildren`)는
-  출력 포트를 만들지 않는다** — 자식을 달아도 실행되지 않으므로 경고보다 배선 자체를
-  막는 편이 낫다. 미검증 노드와 검사 결과를 제목 옆 배지로 표시한다
+- `MotionNodeView` — 포트 타입은 흐름 하나뿐이다. **끝나지 않는 노드(`BlocksChildren`)도
+  출력 포트를 만들되 새 연결만 막는다** — 포트를 없애면 이미 그렇게 배선된 그래프에서
+  간선이 화면에 그려지지 않아 지울 수도 없는데 에셋에는 남아 계속 경고가 뜬다.
+  미검증 노드와 검사 결과를 제목 옆 배지로 표시한다
 - `[OnOpenAsset]`의 instanceID 해석은 Unity 버전으로 갈라 둔다. 6000.3이 `instanceID`
   오버로드를 오류로 폐기하고 `EntityId`로 옮겼는데 `EntityId`는 6000.0에 없다
 
@@ -156,3 +158,14 @@ Node Doctor.
   단계로 묶는다** — 버튼 한 번에 되돌리기 열 번이 필요하면 안 된다
 - 목록은 캐시하고 "새로 고침" 버튼으로만 다시 훑는다. `AssetDatabase.FindAssets`는
   프로젝트가 크면 느리다
+
+문서와 마무리.
+
+- README에 설치 순서(런타임 패키지가 먼저), 창 셋과 각각이 하는 일, 그래프를 만들어
+  프리팹에 붙이는 최단 경로, 노드를 새로 만들 때 Node Doctor를 통과시키는 법,
+  검증 명령 둘을 넣었다
+- CI에 Node Doctor 배치가 **왜 CI에서 돌지 않는지**와 로컬 실행 명령을 남겼다.
+  Unity 라이선스가 필요하기 때문이고, 컴파일 게이트와 같은 이유다. 대신 배치 진입점이
+  사라지지 않았는지는 CI가 지킨다
+- 런타임 패키지 README에 저작 툴 패키지 안내를 넣고, 스펙의 열린 질문 3번을 닫았다
+  (그 저장소의 커밋)

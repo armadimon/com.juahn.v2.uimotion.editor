@@ -75,3 +75,20 @@ jobs:
             echo "Tools~/compile-check/run.sh가 없거나 실행 권한이 없습니다"; exit 1
           fi
           echo "에디터 컴파일 게이트가 제자리에 있습니다 (로컬 실행)"
+
+      - name: Note Node Doctor batch
+        run: |
+          # 노드의 문서화 계약 검사(설명 · 예시 그래프 · [Serializable])는 Unity 에디터를
+          # 열어야 돌아간다. Unity 라이선스가 필요해 이 CI에서는 돌릴 수 없다.
+          # 컴파일 게이트와 같은 이유이고, 같은 방식으로 로컬 게이트로 둔다.
+          #
+          # 노드를 추가하거나 고친 뒤, 그리고 배포 전에 로컬에서 돌린다:
+          #
+          #   Unity -batchmode -quit -projectPath <프로젝트 경로> \
+          #     -executeMethod Juahn.UiMotion.Editor.MotionNodeDoctor.RunBatch
+          #
+          # 문제가 하나라도 있으면 EditorApplication.Exit(1)로 죽는다.
+          if ! grep -q 'public static void RunBatch' Editor/Doctor/MotionNodeDoctor.cs; then
+            echo "MotionNodeDoctor.RunBatch 배치 진입점이 없습니다"; exit 1
+          fi
+          echo "Node Doctor 배치 진입점이 제자리에 있습니다 (로컬 실행, Unity 라이선스 필요)"
