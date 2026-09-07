@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace Juahn.UiMotion.Editor
@@ -26,6 +27,38 @@ namespace Juahn.UiMotion.Editor
         {
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             AssemblyReloadEvents.beforeAssemblyReload += StopAll;
+
+            // 저장 직전에 반드시 멈춘다. 이것이 없으면 프리뷰 중에 Ctrl+S를 누른 순간
+            // 연출의 중간 값이 씬이나 프리팹에 그대로 기록된다. 되돌릴 방법이 없고,
+            // 나중에 "이 팝업은 왜 반쯤 투명한 채 저장돼 있지"로 나타난다.
+            //
+            // 복구 규약은 Stop이 불렸을 때만 도므로 저장 경로를 따로 걸어 줘야 한다.
+            EditorSceneManager.sceneSaving += OnSceneSaving;
+            PrefabStage.prefabSaving += OnPrefabSaving;
+            EditorApplication.quitting += StopAll;
+        }
+
+        [MenuItem(MotionEditorPaths.MenuRoot + "Stop All Previews")]
+        private static void StopAllFromMenu()
+        {
+            StopAll();
+        }
+
+        /// <summary>메뉴 항목은 프리뷰가 도는 중에만 쓸 수 있다.</summary>
+        [MenuItem(MotionEditorPaths.MenuRoot + "Stop All Previews", true)]
+        private static bool StopAllFromMenuValidate()
+        {
+            return IsPreviewing;
+        }
+
+        private static void OnSceneSaving(UnityEngine.SceneManagement.Scene scene, string path)
+        {
+            StopAll();
+        }
+
+        private static void OnPrefabSaving(GameObject content)
+        {
+            StopAll();
         }
 
         public static bool IsPreviewing => Players.Count > 0;
@@ -129,7 +162,38 @@ namespace Juahn.UiMotion.Editor
             }
 
             // 씬 뷰가 스스로 다시 그리지 않으므로 직접 요청한다.
-            SceneView.RepaintAll();
+            //
+            // 다 끝난 플레이어는 목록에 남겨 둔다 — 되돌릴 권리를 유지해야 하기 때문이다.
+            // 하지만 그 상태로 매 에디터 프레임 씬 뷰를 다시 그리면 아무 일도 없는데
+            // 에디터가 계속 바쁘다. 실제로 도는 것이 하나라도 있을 때만 요청한다.
+            if (AnythingPlaying())
+            {
+                SceneView.RepaintAll();
+            }
+        }
+
+        /// <summary>목록의 플레이어 중 실제로 재생 중인 트리거가 하나라도 있는가.</summary>
+        private static bool AnythingPlaying()
+        {
+            for (int i = 0; i < Players.Count; i++)
+            {
+                MotionPlayer player = Players[i];
+                if (player == null || player.Graph == null)
+                {
+                    continue;
+                }
+
+                IReadOnlyList<TriggerDeclaration> triggers = player.Graph.Triggers;
+                for (int t = 0; t < triggers.Count; t++)
+                {
+                    if (triggers[t] != null && player.IsPlaying(triggers[t].Name))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static void OnPlayModeChanged(PlayModeStateChange state)
