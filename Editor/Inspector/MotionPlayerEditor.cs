@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Juahn.UiMotion.Editor
 {
@@ -26,6 +27,13 @@ namespace Juahn.UiMotion.Editor
             SyncBindings,
             BindEmpty,
             BindAll,
+        }
+
+        /// <summary>재생 전 바인딩 대조에서 나온 것 하나.</summary>
+        private struct BindingIssue
+        {
+            public MotionIssueLevel Level;
+            public string Message;
         }
 
         private static readonly Color EmptyRowTint = new Color(0.85f, 0.45f, 0.25f, 0.18f);
@@ -54,6 +62,16 @@ namespace Juahn.UiMotion.Editor
         private readonly List<string> _emptySlots = new List<string>();
         private readonly List<int> _orphanIndices = new List<int>();
         private readonly List<string> _unsyncedSlots = new List<string>();
+
+        /// <summary>슬롯 이름 -> 꽂힌 오브젝트. 재생 전 검사가 노드의 요구와 대조한다.</summary>
+        private readonly Dictionary<string, Object> _boundTargets =
+            new Dictionary<string, Object>(System.StringComparer.Ordinal);
+
+        /// <summary>바인딩을 대조해 나온 것들. 그래프 검사(<see cref="_issues"/>)와는 별개다.</summary>
+        private readonly List<BindingIssue> _bindingIssues = new List<BindingIssue>();
+
+        /// <summary>재생 전 검사의 자세히 구역이 펼쳐져 있는가.</summary>
+        private bool _showChecks = true;
 
         private void OnEnable()
         {
@@ -106,7 +124,7 @@ namespace Juahn.UiMotion.Editor
                 Classify(graph);
 
                 EditorGUILayout.Space();
-                DrawValidation(graph);
+                DrawPrePlayChecks(graph);
 
                 EditorGUILayout.Space();
                 DrawSlots();
@@ -162,12 +180,24 @@ namespace Juahn.UiMotion.Editor
             EditorGUILayout.PropertyField(_playOnEnableProperty, new GUIContent("Play On Enable"));
         }
 
-        private void DrawValidation(MotionGraph graph)
+        /// <summary>
+        /// 재생 전에 잡을 수 있는 것을 전부 모아 보여 준다.
+        ///
+        /// 진단 창은 <b>이미 일어난 일</b>을 보여 준다. 그런데 이 경고들의 상당수는
+        /// 재생하기 전에 이미 알 수 있는 것들이다 — 슬롯이 비었는지, 꽂은 오브젝트가
+        /// 노드가 요구하는 타입을 갖는지는 정적으로 대조된다. 재생해 보고서야 아는 것과
+        /// 인스펙터를 열자마자 아는 것의 차이는 크다.
+        ///
+        /// 그래프 검사 결과도 여기 함께 둔다. 예전에는 요약만 보여 주고 자세한 내용은
+        /// 그래프 창을 열어야 했다.
+        /// </summary>
+        private void DrawPrePlayChecks(MotionGraph graph)
         {
             EnsureIssues(graph);
 
             int errors = 0;
             int warnings = 0;
+
             for (int i = 0; i < _issues.Count; i++)
             {
                 if (_issues[i].Level == MotionIssueLevel.Error)
@@ -180,15 +210,47 @@ namespace Juahn.UiMotion.Editor
                 }
             }
 
+            for (int i = 0; i < _bindingIssues.Count; i++)
+            {
+                if (_bindingIssues[i].Level == MotionIssueLevel.Error)
+                {
+                    errors++;
+                }
+                else if (_bindingIssues[i].Level == MotionIssueLevel.Warning)
+                {
+                    warnings++;
+                }
+            }
+
             string message = errors == 0 && warnings == 0
-                ? "그래프 검사: 문제 없음"
-                : "그래프 검사: 오류 " + errors + " · 경고 " + warnings;
+                ? "재생 전 검사: 문제 없음"
+                : "재생 전 검사: 오류 " + errors + " · 경고 " + warnings;
 
             MessageType level = errors > 0 ? MessageType.Error
                 : warnings > 0 ? MessageType.Warning
                 : MessageType.Info;
 
             EditorGUILayout.HelpBox(message, level);
+
+            // 펼침 여부를 이 패스가 시작될 때의 값으로 고정한다. Foldout을 누르면 값이
+            // 그 자리에서 바뀌는데, 그것을 곧바로 반영하면 같은 GUI 패스 안에서
+            // 컨트롤 개수가 달라진다.
+            bool wasExpanded = _showChecks;
+
+            _showChecks = EditorGUILayout.Foldout(
+                _showChecks,
+                new GUIContent("자세히", "바인딩 검사와 그래프 검사의 각 항목."),
+                true);
+
+            if (_showChecks != wasExpanded)
+            {
+                Repaint();
+            }
+
+            if (wasExpanded)
+            {
+                DrawCheckList();
+            }
 
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -205,6 +267,39 @@ namespace Juahn.UiMotion.Editor
             }
         }
 
+        private void DrawCheckList()
+        {
+            using (new EditorGUI.IndentLevelScope())
+            {
+                if (_bindingIssues.Count == 0 && _issues.Count == 0)
+                {
+                    EditorGUILayout.LabelField("걸린 것이 없습니다.", EditorStyles.miniLabel);
+                    return;
+                }
+
+                for (int i = 0; i < _bindingIssues.Count; i++)
+                {
+                    DrawCheckRow(_bindingIssues[i].Level, _bindingIssues[i].Message);
+                }
+
+                for (int i = 0; i < _issues.Count; i++)
+                {
+                    DrawCheckRow(_issues[i].Level, _issues[i].ToString());
+                }
+            }
+        }
+
+        private static void DrawCheckRow(MotionIssueLevel level, string message)
+        {
+            string mark = level == MotionIssueLevel.Error
+                ? "오류"
+                : level == MotionIssueLevel.Warning ? "경고" : "정보";
+
+            EditorGUILayout.LabelField(
+                new GUIContent("[" + mark + "] " + message, message),
+                EditorStyles.wordWrappedMiniLabel);
+        }
+
         private void DrawSlots()
         {
             EditorGUILayout.LabelField("슬롯", EditorStyles.boldLabel);
@@ -213,14 +308,6 @@ namespace Juahn.UiMotion.Editor
             {
                 EditorGUILayout.HelpBox("이 그래프는 슬롯을 선언하지 않습니다.", MessageType.Info);
                 return;
-            }
-
-            if (_emptySlots.Count > 0)
-            {
-                EditorGUILayout.HelpBox(
-                    "비어 있는 슬롯 " + _emptySlots.Count + "개: " + string.Join(", ", _emptySlots) +
-                    "\n비어 있으면 그 슬롯을 쓰는 노드가 조용히 건너뛰어집니다.",
-                    MessageType.Warning);
             }
 
             for (int i = 0; i < _bindingsProperty.arraySize; i++)
@@ -403,6 +490,8 @@ namespace Juahn.UiMotion.Editor
             _emptySlots.Clear();
             _orphanIndices.Clear();
             _unsyncedSlots.Clear();
+            _boundTargets.Clear();
+            _bindingIssues.Clear();
 
             IReadOnlyList<SlotDeclaration> slots = graph.Slots;
             for (int i = 0; i < slots.Count; i++)
@@ -429,10 +518,15 @@ namespace Juahn.UiMotion.Editor
                     continue;
                 }
 
-                if (element.FindPropertyRelative("Target").objectReferenceValue == null)
+                Object target = element.FindPropertyRelative("Target").objectReferenceValue;
+
+                if (target == null)
                 {
                     _emptySlots.Add(slotName);
+                    continue;
                 }
+
+                _boundTargets[slotName] = target;
             }
 
             foreach (KeyValuePair<string, System.Type> pair in _slotTypes)
@@ -442,6 +536,130 @@ namespace Juahn.UiMotion.Editor
                     _unsyncedSlots.Add(pair.Key);
                 }
             }
+
+            CollectBindingIssues(graph);
+        }
+
+        // --- 재생 전 검사 ---------------------------------------------------
+
+        /// <summary>
+        /// 바인딩과 그래프를 대조해 재생 전에 잡을 수 있는 것을 모은다.
+        ///
+        /// 그리는 도중이 아니라 여기서 한 번에 모으는 이유는 <b>줄 수가 패스 중간에
+        /// 바뀌면 안 되기 때문</b>이다. 그리는 쪽은 이 목록을 그대로 나열하기만 한다.
+        /// </summary>
+        private void CollectBindingIssues(MotionGraph graph)
+        {
+            if (_emptySlots.Count > 0)
+            {
+                _bindingIssues.Add(new BindingIssue
+                {
+                    Level = MotionIssueLevel.Warning,
+                    Message = "비어 있는 슬롯 " + _emptySlots.Count + "개: " + string.Join(", ", _emptySlots) +
+                        ". 그 슬롯을 쓰는 노드는 조용히 건너뛰어집니다.",
+                });
+            }
+
+            CollectTypeMismatches();
+            CollectFadeTargets(graph);
+        }
+
+        /// <summary>
+        /// 꽂힌 오브젝트에서 노드가 요구하는 타입을 얻을 수 있는가.
+        ///
+        /// <b>판정을 <see cref="MotionSlots.Coerce(object, System.Type)"/>에 맡긴다.</b>
+        /// 여기서 같은 규칙을 다시 구현하면 언젠가 갈라지고, 그때 인스펙터가 "괜찮다"고 한
+        /// 것이 런타임에 경고를 낸다 — 도구가 거짓말을 하는 것은 검사가 없는 것보다 나쁘다.
+        /// </summary>
+        private void CollectTypeMismatches()
+        {
+            foreach (KeyValuePair<string, Object> pair in _boundTargets)
+            {
+                System.Type required;
+                if (!_slotTypes.TryGetValue(pair.Key, out required) || required == null)
+                {
+                    continue;
+                }
+
+                if (MotionSlots.Coerce(pair.Value, required) != null)
+                {
+                    continue;
+                }
+
+                _bindingIssues.Add(new BindingIssue
+                {
+                    Level = MotionIssueLevel.Error,
+                    Message = "슬롯 '" + pair.Key + "'에 꽂힌 " + pair.Value.GetType().Name +
+                        "에서 " + required.Name + "을(를) 얻을 수 없습니다. 그 슬롯을 쓰는 노드는 건너뛰어집니다.",
+                });
+            }
+        }
+
+        /// <summary>
+        /// <c>Fade</c>가 쓸 수 있는 대상인가.
+        ///
+        /// <b>일반 타입 검사로는 잡히지 않는다.</b> <c>FadeNode</c>의 슬롯 타입은
+        /// <c>Component</c>라 아무 컴포넌트나 통과하는데, 실제로 필요한 것은
+        /// <c>CanvasGroup</c>이나 <c>Graphic</c> 중 하나다. 없으면 재생 시점에
+        /// 경고 한 줄을 내고 아무 일도 일어나지 않는다.
+        ///
+        /// 노드 타입을 이름으로 특별 취급하는 유일한 자리다. 노드마다 "내 요구를
+        /// 정적으로 검사하는 법"을 선언하게 하는 편이 낫지만 그것은 런타임 API가 되고,
+        /// 지금 실제로 걸리는 노드는 이것 하나다.
+        /// </summary>
+        private void CollectFadeTargets(MotionGraph graph)
+        {
+            IReadOnlyList<MotionNodeBase> nodes = graph.Nodes;
+
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var fade = nodes[i] as FadeNode;
+                if (fade == null)
+                {
+                    continue;
+                }
+
+                Object bound = ResolveForCheck(fade.Target);
+                if (bound == null)
+                {
+                    // 비어 있는 슬롯은 위에서 이미 한 줄로 올렸다. 두 번 말하지 않는다.
+                    continue;
+                }
+
+                if (MotionSlots.Coerce(bound, typeof(CanvasGroup)) != null ||
+                    MotionSlots.Coerce(bound, typeof(Graphic)) != null)
+                {
+                    continue;
+                }
+
+                _bindingIssues.Add(new BindingIssue
+                {
+                    Level = MotionIssueLevel.Error,
+                    Message = "Fade 노드 " + fade.Id + "의 대상 '" + fade.Target +
+                        "'에 CanvasGroup도 Graphic도 없습니다. 재생해도 아무 일이 일어나지 않습니다.",
+                });
+            }
+        }
+
+        /// <summary>
+        /// 슬롯 하나를 검사용으로 해석한다. <c>SlotTable</c>과 같은 규칙이다 —
+        /// <c>Self</c>는 플레이어 자신이고, 나머지는 바인딩 목록에서 찾는다.
+        /// </summary>
+        private Object ResolveForCheck(SlotRef slot)
+        {
+            if (!slot.IsValid)
+            {
+                return null;
+            }
+
+            if (slot.IsSelf)
+            {
+                var player = target as MotionPlayer;
+                return player == null ? null : player.transform;
+            }
+
+            Object bound;
+            return _boundTargets.TryGetValue(slot.Name, out bound) ? bound : null;
         }
 
         /// <summary>
