@@ -244,7 +244,7 @@ namespace Juahn.UiMotion.Editor
         /// 같은 부모에서 나가는 간선의 순서를 바꾼다. 이 순서가 곧 <c>Sequence</c>의 실행 순서다.
         ///
         /// 인덱스는 <b>화면에서 보이는 자식 순서</b>(0부터)를 받는다. 저장 구조의 인덱스가
-        /// 아니다 — 그 변환은 <see cref="IndicesOf"/>가 한다.
+        /// 아니다 — 그 변환은 코어의 <see cref="MotionLinkOrder"/>가 한다.
         /// </summary>
         public bool MoveChild(NodeId parent, int fromChildIndex, int toChildIndex)
         {
@@ -253,32 +253,20 @@ namespace Juahn.UiMotion.Editor
                 return false;
             }
 
-            List<int> indices = IndicesOf(_graph, parent);
-
-            if (fromChildIndex < 0 || fromChildIndex >= indices.Count)
-            {
-                return false;
-            }
-
-            if (toChildIndex < 0 || toChildIndex >= indices.Count)
+            // 변환은 코어의 MotionLinkOrder가 한다. 여기 두지 않는 이유는 이 계산이
+            // 틀리면 Sequence의 실행 순서가 조용히 바뀌기 때문이다 — 오류도 경고도 나지
+            // 않는다. 코어에 있으면 dotnet test로 덮을 수 있고, 실제로 덮여 있다.
+            int globalFrom;
+            int globalTo;
+            if (!MotionLinkOrder.Resolve(_graph.Links, parent, fromChildIndex, toChildIndex,
+                    out globalFrom, out globalTo))
             {
                 return false;
             }
 
             Undo.RegisterCompleteObjectUndo(_graph, "Reorder Motion Links");
 
-            // MoveLink는 원소를 뽑아낸 뒤 목적지에 끼워 넣는다. 그래서 목적지 인덱스는
-            // "뽑아낸 뒤"의 배열 기준이고, 두 방향 모두 indices[toChildIndex]가 정답이다.
-            //
-            //   뒤로 옮길 때(from < to): 뽑아내면 목적지 간선이 한 칸 당겨지므로
-            //     indices[to]에 끼우면 그 간선 바로 뒤에 놓인다.
-            //   앞으로 옮길 때(from > to): 목적지는 뽑아낸 자리보다 앞이라 당겨지지 않으므로
-            //     indices[to]에 끼우면 그 간선 바로 앞에 놓인다.
-            //
-            // 한 번의 MoveLink로 끝나므로 인덱스를 다시 계산할 일이 없다. 두 번 부르는
-            // 방식(맞바꾸기)이었다면 첫 호출이 배열을 재배치하므로 두 번째 인덱스를 반드시
-            // 다시 계산해야 한다 — 미리 뽑아 둔 값을 그대로 쓰면 엉뚱한 간선을 옮긴다.
-            if (!_graph.MoveLink(indices[fromChildIndex], indices[toChildIndex]))
+            if (!_graph.MoveLink(globalFrom, globalTo))
             {
                 return false;
             }
@@ -288,26 +276,6 @@ namespace Juahn.UiMotion.Editor
             RefreshChildOrder();
             RefreshIssues();
             return true;
-        }
-
-        /// <summary>
-        /// 부모에서 나가는 간선들이 전역 배열의 몇 번째인지 모은다.
-        /// 화면의 "두 번째 자식"과 저장 구조의 인덱스를 잇는 다리다.
-        /// </summary>
-        private static List<int> IndicesOf(MotionGraph graph, NodeId parent)
-        {
-            var indices = new List<int>();
-            IReadOnlyList<NodeLink> links = graph.Links;
-
-            for (int i = 0; i < links.Count; i++)
-            {
-                if (links[i].From == parent)
-                {
-                    indices.Add(i);
-                }
-            }
-
-            return indices;
         }
 
         /// <summary>검사를 다시 돌려 노드 배지를 갱신한다.</summary>
