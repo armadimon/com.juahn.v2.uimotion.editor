@@ -120,6 +120,32 @@ namespace Juahn.UiMotion.Editor
             player.Fire(trigger);
         }
 
+        /// <summary>
+        /// 트리거 하나만 멈춘다. 그 트리거의 복구가 돌고, 같은 플레이어의 다른 트리거는
+        /// 계속 돈다.
+        ///
+        /// <b>왜 <see cref="Stop"/>과 따로 두는가</b> — 인스펙터의 트리거별 "정지" 버튼이
+        /// <see cref="Stop"/>을 부르면 트리거 하나를 멈추려 했는데 그 플레이어의 프리뷰가
+        /// 전부 멈춘다. 버튼이 있는 자리와 하는 일이 어긋난다.
+        ///
+        /// 아무것도 남지 않으면 목록에서 뺀다 — 도는 것이 없는데 드라이버가 계속
+        /// 시간을 넣으면 안 되기 때문이다.
+        /// </summary>
+        public static void StopTrigger(MotionPlayer player, string trigger)
+        {
+            if (player == null || string.IsNullOrEmpty(trigger))
+            {
+                return;
+            }
+
+            player.Stop(trigger);
+
+            if (!IsPlayingPreview(player))
+            {
+                Stop(player);
+            }
+        }
+
         /// <summary>이 플레이어의 프리뷰를 멈추고 대상을 원래대로 돌린다.</summary>
         public static void Stop(MotionPlayer player)
         {

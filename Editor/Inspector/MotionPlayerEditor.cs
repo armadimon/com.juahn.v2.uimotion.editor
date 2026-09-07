@@ -539,13 +539,17 @@ namespace Juahn.UiMotion.Editor
                 // 에디터에서는 드라이버를 거친다. player.Stop만 부르면 트리거는 멈추지만
                 // 플레이어가 프리뷰 목록에 남아, 도는 것이 하나도 없는데도 드라이버가
                 // 계속 시간을 넣고 "프리뷰 멈추기" 버튼도 사라지지 않는다.
+                //
+                // StopAll이 아니라 StopTrigger를 부른다 — 이 버튼은 트리거 하나 옆에
+                // 있으므로 그 하나만 멈춰야 한다. 남은 것이 없으면 드라이버가 알아서
+                // 목록에서 뺀다.
                 if (Application.isPlaying)
                 {
                     player.Stop(_pendingStop);
                 }
                 else
                 {
-                    MotionPreviewDriver.Stop(player);
+                    MotionPreviewDriver.StopTrigger(player, _pendingStop);
                 }
 
                 _pendingStop = null;

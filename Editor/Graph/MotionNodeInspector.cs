@@ -30,6 +30,14 @@ namespace Juahn.UiMotion.Editor
         private SerializedObject _serialized;
         private MotionGraph _serializedFor;
 
+        /// <summary>
+        /// 다음 패스에 열 입력줄. Popup 선택은 <c>ExecuteCommand</c> 패스로 오므로
+        /// 그 자리에서 컨트롤을 늘리면 Layout 패스와 개수가 어긋나 IMGUI가 예외를 던진다.
+        /// </summary>
+        private string _pendingNewSlotPath;
+
+        private bool _repaintQueued;
+
         /// <summary>"새 슬롯..."을 고른 필드의 프로퍼티 경로. 비어 있으면 입력 중이 아니다.</summary>
         private string _newSlotPath = string.Empty;
 
@@ -102,6 +110,14 @@ namespace Juahn.UiMotion.Editor
 
             EnsureSerialized(graph);
 
+            // 지난 패스에서 "새 슬롯..."을 골랐다면 여기서 연다. Layout 패스가 시작되기
+            // 전이라 이 패스의 컨트롤 개수가 처음부터 일관된다.
+            if (_pendingNewSlotPath != null)
+            {
+                _newSlotPath = _pendingNewSlotPath;
+                _pendingNewSlotPath = null;
+            }
+
             _serialized.Update();
 
             DrawHeader(model, id);
@@ -142,6 +158,14 @@ namespace Juahn.UiMotion.Editor
 
             EditorGUILayout.Space();
             DrawChildOrder(graph, id);
+
+            if (_repaintQueued)
+            {
+                _repaintQueued = false;
+
+                // 다음 패스를 부른다. 미뤄 둔 입력줄이 그때 열린다.
+                _body.MarkDirtyRepaint();
+            }
         }
 
         /// <summary>
@@ -311,8 +335,14 @@ namespace Juahn.UiMotion.Editor
                 if (chosen == NewSlotLabel)
                 {
                     // 이름을 받아야 하므로 입력줄을 연다. 확정 전까지 값은 그대로 둔다.
-                    _newSlotPath = slot.propertyPath;
+                    //
+                    // 다음 패스부터 열리게 미룬다. Popup의 선택은 ExecuteCommand 패스로
+                    // 오는데, 그 자리에서 바로 입력줄을 그리면 이 패스가 Layout 패스보다
+                    // 컨트롤을 세 개 더 그려 IMGUI가 예외를 던진다
+                    // ("Getting control N's position in a group with only M controls").
+                    _pendingNewSlotPath = slot.propertyPath;
                     _newSlotName = string.Empty;
+                    _repaintQueued = true;
                 }
                 else
                 {
