@@ -42,3 +42,19 @@
   검사는 그래프 전체를 훑기 때문이다
 - `MotionIssueDrawer` — 검사 결과를 그리는 공통 코드. 심각한 것부터 그리고 개수를 제한한다.
   인스펙터 · Node Doctor · 그래프 창이 같은 것을 쓴다
+
+Node Doctor.
+
+- `MotionNodeDoctor` — 노드의 문서화 계약을 검사한다. `[MotionNode]` 유무 · `Summary` ·
+  `Sample`이 가리키는 예시 그래프가 실제로 존재하는지 · 같은 이름의 예시가 둘 이상은 아닌지 ·
+  `[Serializable]` 유무. 예시는 정해진 경로가 아니라 **이름으로 프로젝트 전체를 검색한다** —
+  프로젝트가 자기 노드를 추가하면 그 예시는 이 패키지 밖에 있기 때문이다
+- `MotionNodeDoctor.RunBatch` — 배치 모드 진입점이자 CI 게이트. 문제가 하나라도 있으면
+  `EditorApplication.Exit(1)`로 죽는다
+
+      Unity -batchmode -quit -projectPath <path> \
+        -executeMethod Juahn.UiMotion.Editor.MotionNodeDoctor.RunBatch
+
+- `MotionNodeDoctorWindow` — 같은 검사를 표로 보여 준다. 통과하지 못한 것이 위로 올라오고,
+  행을 누르면 무엇이 빠졌는지와 예시 에셋을 보여 준다. 검사는 열 때와 "다시 검사"를 눌렀을
+  때만 돈다 — 노드마다 `AssetDatabase.FindAssets`를 부르기 때문이다
