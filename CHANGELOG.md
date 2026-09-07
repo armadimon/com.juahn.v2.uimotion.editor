@@ -143,3 +143,16 @@ Node Doctor.
   표식만 놓고 선언을 만들지 않으면 그래프는 재생되지 않는다
 - `MotionGraphViewImpl`이 `ISelection` 구현을 가로채 `SelectionChanged`를 낸다.
   GraphView는 선택 변경 이벤트를 주지 않는다
+
+프리셋 브라우저.
+
+- `MotionPresetBrowser` — `Window > UI Motion > Presets`. 프로젝트의 모든 `MotionGraph`를
+  이름 · 경로 · 노드 수 · 트리거 목록 · 검사 요약으로 줄 세운다. 이름과 트리거 이름으로
+  거른다. 한 번 누르면 에셋을 고르고, 두 번 누르면 그래프 창에서 연다
+- **"선택한 오브젝트에 적용"** — 계층에서 고른 오브젝트마다 `MotionPlayer`를 붙이고(없으면)
+  그래프를 꽂은 뒤 `SyncBindings()`와 슬롯 자동 바인딩을 돌린다. 그래프를 만들어 두어도
+  붙이는 일이 여러 단계면 결국 재사용되지 않으므로, 이 버튼 하나로 끝나야 한다.
+  `Undo.AddComponent`와 `Undo.RecordObject`를 거치고 오브젝트 여러 개를 **하나의 되돌리기
+  단계로 묶는다** — 버튼 한 번에 되돌리기 열 번이 필요하면 안 된다
+- 목록은 캐시하고 "새로 고침" 버튼으로만 다시 훑는다. `AssetDatabase.FindAssets`는
+  프로젝트가 크면 느리다
