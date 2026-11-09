@@ -34,6 +34,11 @@
       <HintPath>$(UnityManaged)/UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- 6000.6부터 PreserveAttribute 등이 ScriptingModule로 옮겨졌다. 이전 에디터에는 없으므로 있을 때만 참조한다. -->
+    <Reference Include="UnityEngine.ScriptingModule" Condition="Exists('$(UnityManaged)/UnityEngine.ScriptingModule.dll')">
+      <HintPath>$(UnityManaged)/UnityEngine.ScriptingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine.UIModule">
       <HintPath>$(UnityManaged)/UnityEngine.UIModule.dll</HintPath>
       <Private>false</Private>

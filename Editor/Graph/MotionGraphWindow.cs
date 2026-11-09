@@ -45,21 +45,23 @@ namespace Juahn.UiMotion.Editor
 
         /// <summary>프로젝트 창에서 그래프 에셋을 더블클릭하면 이 창이 뜬다.</summary>
         [OnOpenAsset]
+#if UNITY_6000_0_OR_NEWER && !UNITY_6000_5_OR_NEWER
         public static bool OnOpenGraphAsset(int instanceId, int line)
         {
-            // 6000.3이 instanceID를 받는 오버로드를 전부 오류로 폐기하고 EntityId로 옮겼다.
-            // 그런데 EntityId는 6000.0에 없다. 이 패키지는 package.json에 6000.0을
-            // 선언하므로 양쪽을 다 살려 둔다. 조건이 뒤집혀 있는 것은 의도한 것이다 -
-            // 컴파일 게이트(dotnet)에는 UNITY_ 심볼이 없고, 그 게이트가 참조하는 DLL은
-            // 설치된 최신 에디터의 것이므로 심볼이 없을 때 최신 쪽으로 가야 한다.
-#if UNITY_6000_0_OR_NEWER && !UNITY_6000_3_OR_NEWER
+#if !UNITY_6000_3_OR_NEWER
             var graph = EditorUtility.InstanceIDToObject(instanceId) as MotionGraph;
 #else
-            // int -> EntityId 암묵 변환은 언젠가 사라진다고 예고돼 있다. 그때가 오면
-            // OnOpenAsset이 넘겨주는 것도 EntityId일 테니 이 pragma가 신호가 된다.
+            // 6000.3~6000.4: EntityId는 있지만 int 암시 변환만 있다.
 #pragma warning disable 618
             var graph = EditorUtility.EntityIdToObject(instanceId) as MotionGraph;
 #pragma warning restore 618
+#endif
+#else
+        // 6000.5 이상: int -> EntityId 변환이 obsolete 에러다. OnOpenAsset이 EntityId를 직접 넘긴다.
+        // 마지막 갈래가 #else인 이유는 MotionObjectId와 같다 - UNITY_ 심볼이 없는 dotnet 게이트는 최신 쪽으로 간다.
+        public static bool OnOpenGraphAsset(EntityId entityId, int line)
+        {
+            var graph = EditorUtility.EntityIdToObject(entityId) as MotionGraph;
 #endif
             if (graph == null)
             {

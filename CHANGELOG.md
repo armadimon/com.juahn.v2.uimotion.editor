@@ -2,6 +2,13 @@
 
 ## [0.1.0] - 미출시
 
+### 고침 — Unity 6000.5 이상에서 컴파일 오류
+
+- `MotionGraphWindow.OnOpenGraphAsset`이 6000.5+에서 `int -> EntityId` 암시 변환
+  obsolete 오류(CS0619)로 컴파일되지 않던 문제. 6000.5부터는 `OnOpenAsset`의
+  `EntityId` 시그니처를 받는다. 분기 모양은 `MotionObjectId`와 같다 — 마지막 갈래가
+  `#else`라 `UNITY_` 심볼이 없는 컴파일 게이트는 최신 쪽으로 간다. 6000.0~6000.4 동작은 그대로
+
 ### 더함 — 곡선 프리셋과 프리셋 그래프
 
 - **곡선 프리셋 고르개** — 노드 인스펙터에서 `AnimationCurve` 필드 아래에 뜬다. 빈 곡선
