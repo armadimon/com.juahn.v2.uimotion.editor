@@ -22,9 +22,12 @@ namespace Juahn.UiMotion.Editor
         /// <summary>이 패키지가 프리셋을 만들 자리.</summary>
         private const string PresetsFolder = "Editor/Presets";
 
+        /// <summary>패키지가 읽기 전용으로 설치됐을 때(git·레지스트리) 대신 쓰는 프로젝트 폴더.</summary>
+        private const string ProjectPresetsFolder = "Assets/UI Motion Presets";
+
         private const string ReadOnlyHint =
-            "패키지가 읽기 전용 위치(Library/PackageCache)에 있으면 프리셋을 만들 수 없습니다. " +
-            "패키지 폴더를 Packages/ 아래로 복사해 임베드한 뒤 다시 시도하세요.";
+            "프리셋 폴더에 쓸 수 없습니다. 읽기 전용 설치(git·레지스트리)는 " + ProjectPresetsFolder +
+            "에 만들고, 임베드·로컬 설치는 패키지 안 Editor/Presets에 만듭니다. 해당 폴더의 쓰기 권한을 확인하세요.";
 
         /// <summary>버튼 연출을 나누는 두 트리거. uGUI의 PointerDown / PointerUp에 잇는다.</summary>
         private const string PressTrigger = "Press";
@@ -304,6 +307,16 @@ namespace Juahn.UiMotion.Editor
                 if (editorIndex < 0)
                 {
                     continue;
+                }
+
+                // git·레지스트리 설치는 Library/PackageCache에 있고 불변이다. CreateAsset이 조용히
+                // 실패하므로 그 경우 프로젝트 Assets 아래에 만든다. 임베드·로컬 설치는 기존대로 패키지 안.
+                var package = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path);
+                if (package != null
+                    && package.source != UnityEditor.PackageManager.PackageSource.Embedded
+                    && package.source != UnityEditor.PackageManager.PackageSource.Local)
+                {
+                    return ProjectPresetsFolder;
                 }
 
                 return path.Substring(0, editorIndex + 1) + PresetsFolder;

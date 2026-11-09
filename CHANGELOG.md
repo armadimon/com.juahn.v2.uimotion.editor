@@ -2,6 +2,12 @@
 
 ## [0.1.0] - 미출시
 
+### 고침 — 읽기 전용 설치에서 프리셋 생성이 조용히 실패
+
+- git·레지스트리로 설치하면 패키지가 `Library/PackageCache`(불변)에 있어 `Generate Preset Graphs`가
+  아무것도 만들지 못했다. 이제 그 경우 프로젝트의 `Assets/UI Motion Presets`에 만든다.
+  임베드·로컬 설치는 기존처럼 패키지 안 `Editor/Presets`
+
 ### 고침 — Unity 6000.5 이상에서 컴파일 오류
 
 - `MotionGraphWindow.OnOpenGraphAsset`이 6000.5+에서 `int -> EntityId` 암시 변환
